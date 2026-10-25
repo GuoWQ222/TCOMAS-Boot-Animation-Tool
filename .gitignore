@@ -24,3 +24,4 @@ original_backup/
 *.zip
 device-info.json
 desktop.ini
+!docs/assets/*.png

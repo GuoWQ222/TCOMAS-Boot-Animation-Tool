@@ -4,6 +4,8 @@
 
 这是独立的社区工具。完成写入后，屏幕可自行播放，无需原厂软件常驻。项目不升级或替换屏幕的可执行固件。
 
+![LG700 开机动画工具界面预览](docs/assets/app-screenshot.png)
+
 ## 下载和使用
 
 1. 从 [Releases](https://github.com/GuoWQ222/TCOMAS-Boot-Animation-Tool/releases) 下载 Windows x64 便携包并解压。
