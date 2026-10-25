@@ -11,11 +11,11 @@ Windows 便携 ZIP 中的 `ffmpeg.exe` 使用以下未修改的上游源码独�
 
 ## 下载对应源码
 
-同一 [v1.0.0 Release](https://github.com/GuoWQ222/TCOMAS-Boot-Animation-Tool/releases/tag/v1.0.0) 提供：
+从 [v1.0.0 Release](https://github.com/GuoWQ222/TCOMAS-Boot-Animation-Tool/releases/tag/v1.0.0) 下载 Windows x64 便携 ZIP 并解压，其中的对应源码包为：
 
-`TCOMAS-Boot-Animation-Tool-v1.0.0-third-party-sources.zip`
+`TCOMAS-Boot-Animation-Tool/third-party-sources.zip`
 
-其中包含准确的上游源码压缩包、源文件 SHA-256、构建脚本、构建补丁及说明。`SHA256SUMS.txt` 同时列出公开下载资产的校验值。上游源码压缩包保持原样；构建时仅对 FFmpeg 的 Makefile 应用响应文件生成补丁，避免 Windows 命令行长度限制，不修改媒体处理实现。zlib 未做修改。
+其中包含准确的上游源码压缩包、源文件 SHA-256、构建脚本、构建补丁及说明。无需另行下载第三方源码附件；Release 的 `SHA256SUMS.txt` 提供便携 ZIP 的校验值。上游源码压缩包保持原样；构建时仅对 FFmpeg 的 Makefile 应用响应文件生成补丁，避免 Windows 命令行长度限制，不修改媒体处理实现。zlib 未做修改。
 
 ## 重建
 

@@ -14,6 +14,6 @@ The application source is licensed separately under MIT. The third-party license
 
 The Windows portable ZIP also contains **FFmpeg 8.1.1**, invoked as a separate executable. This build disables GPL, nonfree and version3 components, and uses FFmpeg under LGPL-2.1-or-later. Its statically linked zlib 1.3.1 uses the zlib license. The executable's full license output and upstream license texts are included under `licenses/third-party/FFmpeg/` and `licenses/third-party/zlib/`.
 
-Unmodified FFmpeg and zlib source archives, the exact build script, source checksums, and rebuilding instructions are provided in the same Release as `TCOMAS-Boot-Animation-Tool-v1.0.0-third-party-sources.zip`. See `docs/ffmpeg-sources.md`. The project's MIT license does not replace these component licenses.
+Unmodified FFmpeg and zlib source archives, the exact build script, source checksums, and rebuilding instructions are bundled inside the Windows portable ZIP as `TCOMAS-Boot-Animation-Tool/third-party-sources.zip`. No separate source asset is needed from the Release. See `docs/ffmpeg-sources.md`. The project's MIT license does not replace these component licenses.
 
 No vendor installer, firmware, factory animation, device backup, user video, or proprietary native vendor library is distributed by this project.
