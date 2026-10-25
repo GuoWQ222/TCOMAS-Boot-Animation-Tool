@@ -224,6 +224,10 @@ class LG700:
         for report in encode_reports(op, payload):
             if self.hid.write(report) != 441:
                 raise OSError("HID 发送长度异常")
+        if op == 0x1E:
+            # Vendor dispatch schedules persistence and returns without an ACK.
+            # Waiting here invents a timeout, even when the command succeeded.
+            return b''
         deadline = time.monotonic() + timeout_ms / 1000
         last_unexpected = None
         while True:
@@ -335,6 +339,8 @@ class LG700:
         audit = {'revision': f'{self.revision:04X}', 'command': '0x1E',
                  'mode': 1 if enabled else 0, 'previous_mode': None,
                  'mode_readback_supported': False, 'acknowledged': False,
+                 'ack_expected': False, 'send_completed': False,
+                 'communication_verified': False,
                  'device_reconnected': False,
                  'visual_playback_verified': False, 'time_unix': time.time()}
         audit_path = directory / 'playback_mode.json'
@@ -345,8 +351,17 @@ class LG700:
             audit['error'] = f'{type(error).__name__}: {error}'
             audit['result'] = 'unknown_after_send_do_not_retry_automatically'
             audit_path.write_text(json.dumps(audit, indent=2), encoding='utf8')
-            # REV 0067 was physically verified to restart its USB connection
-            # after switching to mode 1, and then loop the saved video.
+            raise RuntimeError('播放模式命令发送未完成，结果未知；没有重复发送，也未继续擦写。') from error
+        audit['send_completed'] = True
+        # The mode has no getter. A subsequent version probe checks only that
+        # commands are still processed; it is not an acknowledgement of the mode.
+        time.sleep(1)
+        try:
+            revision = struct.unpack_from('<H', self.query(0x87, timeout_ms=600))[0]
+            if revision != self.revision:
+                raise RuntimeError('模式命令后固件版本变化，已停止')
+        except (OSError, TimeoutError) as error:
+            audit['probe_error'] = f'{type(error).__name__}: {error}'
             try:
                 self._reconnect_command_interface()
             except Exception as reconnect_error:
@@ -355,12 +370,8 @@ class LG700:
                 raise RuntimeError('离线播放命令后屏幕未重新连接；素材备份已保留，'
                                    '没有重复发送命令。') from reconnect_error
             audit['device_reconnected'] = True
-            audit['result'] = 'sent_then_reconnected_mode_byte_unreadable'
-        else:
-            audit['acknowledged'] = True
-            audit['result'] = 'command_acknowledged_mode_byte_unreadable'
-        # Firmware defers saving configuration; don't close immediately.
-        time.sleep(1)
+        audit['communication_verified'] = True
+        audit['result'] = 'sent_without_ack_communication_verified_mode_byte_unreadable'
         audit_path.write_text(json.dumps(audit, indent=2), encoding='utf8')
         return audit
 
@@ -447,7 +458,12 @@ class LG700:
                     raise ValueError('备份后素材内容发生变化，请重新备份；尚未开始擦写')
                 self.last_write_skipped = True
                 return sha256(actual)
-        ack = self.query(0x0A, struct.pack("<II", selector, len(data)), timeout_ms=15000)
+        log.info('Write start selector=%d size=%d chunk=%d sha256=%s', selector, len(data), WRITE_CHUNK, sha256(data))
+        try:
+            ack = self.query(0x0A, struct.pack("<II", selector, len(data)), timeout_ms=15000)
+        except (OSError, TimeoutError) as error:
+            log.exception('Write begin failed selector=%d size=%d', selector, len(data))
+            raise OSError(f'开始擦写失败：selector={selector}，目标 {len(data):,} 字节；结果未知，未自动重发：{error}') from error
         which, accepted = struct.unpack_from("<Ii", ack)
         if which != selector or accepted != len(data):
             raise OSError("设备拒绝开始写入，未发送素材")
@@ -458,7 +474,17 @@ class LG700:
             # Byte 8 is progress percentage; >=100 commits the storage record.
             percent = 100 if final else min(99, (offset + len(chunk)) * 100 // len(data))
             payload = struct.pack("<III", offset, len(chunk), percent) + chunk
-            ack = self.query(0x0B, payload, timeout_ms=15000)
+            if offset % SECTOR == 0 or final:
+                log.info('Write block selector=%d offset=%d length=%d percent=%d final=%s',
+                         selector, offset, len(chunk), percent, final)
+            try:
+                ack = self.query(0x0B, payload, timeout_ms=15000)
+            except (OSError, TimeoutError) as error:
+                log.exception('Write block failed selector=%d offset=%d length=%d final=%s',
+                              selector, offset, len(chunk), final)
+                state = '最后提交结果未知' if final else '开机素材可能尚未提交' if selector else '待机素材可能尚未提交'
+                raise OSError(f'写入中断：selector={selector}，offset={offset:,}，length={len(chunk):,}；'
+                              f'{state}，未自动重发。{error}') from error
             off, length, status = struct.unpack_from("<IIi", ack)
             if off != offset or length != len(chunk) or status < 0:
                 raise OSError(f"写入失败：offset={offset}, status={status}。保留备份，可用恢复功能。")

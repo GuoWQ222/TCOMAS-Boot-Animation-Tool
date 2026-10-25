@@ -72,7 +72,7 @@ class App:
         self.operation_stage = '就绪'
         self.log_path = configure_logging()
         self.quality_worker = QualityPreview(self.events)
-        root.title("LG700 开机动画工具 v1.0.1 · 通信修复测试版")
+        root.title("LG700 开机动画工具 v1.0.1 · 离线写入保护版")
         root.geometry("1000x840")
         root.minsize(950, 810)
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -273,7 +273,8 @@ class App:
             except Exception as error:
                 logging.getLogger('lg700.app').exception('Operation failed at %s', self.operation_stage)
                 message = self.operation_stage + '\n' + str(error)
-                if self.operation_stage in ('写前备份（尚未发送擦除或写入）', '核验原始备份（尚未发送擦除或写入）'):
+                if self.operation_stage in ('写前备份（尚未发送擦除或写入）', '核验原始备份（尚未发送擦除或写入）',
+                                            '暂停离线循环（备份已核验，尚未擦写素材）'):
                     message += '\n本次尚未发送擦除或写入命令，原动画未被本次操作覆盖。'
                 self.events.put(("error", message + '\n日志：' + str(self.log_path)))
             finally:
@@ -374,9 +375,9 @@ class App:
         self.note('设置屏幕原生离线播放：图片常驻，视频循环……')
         result = device.set_offline_loop(True, directory)
         if result['device_reconnected']:
-            self.note('模式切换后屏幕已重新连接；没有重复发送命令。')
+            self.note('发送后版本查询曾失败，已重新打开命令口；没有重复发送模式命令。')
         else:
-            self.note('屏幕已应答离线播放模式命令。')
+            self.note('离线播放命令已发送，后续版本查询正常；此命令不返回应答。')
         self.note('模式接口没有读取功能；关机开机后的实际播放仍需观察确认。')
 
     def repair_offline(self):
@@ -454,6 +455,9 @@ class App:
             self.stage('核验原始备份（尚未发送擦除或写入）')
             original = preserve_original(device, directory)
             self.note("原始备份已保留：" + str(original))
+            self.stage('暂停离线循环（备份已核验，尚未擦写素材）')
+            device.set_offline_loop(False, directory)
+            self.note('已发送维护模式 0，写入和读回期间保持；校验成功后再恢复离线循环。')
             self.stage('素材写入及完整读回校验')
             assets = [(0, "待机图", frame), (1, "开机动画", data)]
             for selector, name, asset in assets:
@@ -498,6 +502,8 @@ class App:
                     device.backup(directory, lambda name, p: self.note(f"恢复前备份 {name}：{p:.0%}", p * 100))
                 except (OSError, ValueError) as error:
                     self.note("当前素材无法完整备份，将用现有原厂备份恢复：" + str(error))
+                self.stage('恢复前暂停离线循环')
+                device.set_offline_loop(False, path)
                 self.stage('恢复素材并完整读回校验')
                 for selector in (0, 1):
                     def update(p, selector=selector):
