@@ -7,12 +7,13 @@ from logging.handlers import RotatingFileHandler
 import queue
 import sys
 import threading
+import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from PIL import Image, ImageTk, ImageDraw
-from lg700_core import LG700, capacity, unpack_boot, restore_file
+from lg700_core import LG700, capacity, unpack_boot, restore_file, sha256
 from convert_media import convert
 from vendor_pause import pause_vendor
 from current_media import detect_current_media
@@ -72,7 +73,7 @@ class App:
         self.operation_stage = '就绪'
         self.log_path = configure_logging()
         self.quality_worker = QualityPreview(self.events)
-        root.title("LG700 开机动画工具 v1.0.2 · mode1 恢复修复版")
+        root.title("LG700 开机动画工具 v1.0.5 · mode0/USB 时序修复版")
         root.geometry("1000x840")
         root.minsize(950, 810)
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -459,7 +460,12 @@ class App:
             device.set_offline_loop(False, directory)
             self.note('已发送维护模式 0，写入和读回期间保持；校验成功后再恢复离线循环。')
             self.stage('素材写入及完整读回校验')
-            assets = [(0, "待机图", frame), (1, "开机动画", data)]
+            # The same first frame must exist in both playback paths.  The
+            # complete package belongs to mode1/selector 1; selector 0 is the
+            # mode0 standby image used before the native loop takes over.
+            # Write selector 1 first, then selector 0 last so the final record
+            # committed by this operation is the requested mode0 first frame.
+            assets = [(1, "mode1 开机动画", data), (0, "mode0 待机首帧", frame)]
             for selector, name, asset in assets:
                 self.stage(f'{name}写入及完整读回校验')
                 def update(p, name=name):
@@ -473,12 +479,46 @@ class App:
                 else:
                     self.note(f"{name}写入并读回一致：{digest[:16]}…")
             self.events.put(('hardware_size', len(data)))
+            # REV 0067 can expose the previous standby record when mode 1 is
+            # sent immediately after a successful selector-0 commit.  The
+            # write/read pair above proves the bytes, but not that the flash
+            # record has finished becoming the active record.  Let the
+            # device finish its commit, then verify selector 0 once more
+            # before changing the playback mode.
+            self.stage('等待 mode0 待机记录提交完成')
+            time.sleep(3)
+            settled, _ = device.read_asset(0, lambda p: self.note(
+                f'mode0 待机首帧提交后复核：{p:.0%}', p * 100))
+            if settled != frame:
+                raise OSError('mode0 待机首帧在提交等待后已回退；未发送 mode1 命令')
+            self.note(f'mode0 待机首帧提交后复核一致：{sha256(settled)[:16]}…')
             try:
                 self.stage('设置离线播放模式（素材已写入并校验）')
                 self.enable_offline(device, directory)
             except Exception as error:
                 raise RuntimeError('素材已写入并校验通过，但离线播放模式设置失败：' + str(error)) from error
-        self.note("自定义素材写入校验通过，已自动切换 mode1 离线循环。请关机开机验证。")
+            # Mode 1 has no readable getter, but both asset records can still
+            # be checked after the mode command.  This catches the exact case
+            # where an old standby image would otherwise remain unnoticed.
+            # The mode command may reset the USB interface after its version
+            # probe. Reopen the command handle for this read-only check; do
+            # not resend either the asset write or the mode command.
+            self.stage('最终读回 mode1 动画与 mode0 首帧')
+            time.sleep(2)
+            for selector, name, expected in ((1, 'mode1 开机动画', data),
+                                              (0, 'mode0 待机首帧', frame)):
+                try:
+                    actual, _ = device.read_asset(selector, lambda p: self.note(
+                        f'{name}最终读回：{p:.0%}', p * 100))
+                except (OSError, TimeoutError):
+                    self.note(f'{name}首次最终读回遇到 USB 重连，正在重新打开读通道；没有重发写入或模式命令。')
+                    device._reconnect_command_interface()
+                    actual, _ = device.read_asset(selector, lambda p: self.note(
+                        f'{name}重连后最终读回：{p:.0%}', p * 100))
+                if actual != expected:
+                    raise OSError(f'{name}最终读回与目标不一致；已停止，未继续发送命令')
+                self.note(f'{name}最终读回一致：{sha256(actual)[:16]}…')
+        self.note("自定义素材写入校验通过：mode1 已写入完整视频，mode0 已写入第一帧，并已最终读回确认。请完全断电再开机验证。")
 
     def restore(self):
         try:
