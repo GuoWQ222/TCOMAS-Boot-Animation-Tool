@@ -2,7 +2,8 @@
 
 <p align="center">
   把喜欢的图片与视频，留在你的水冷屏幕里。<br>
-  <strong>写入钛坦 LG700 · 进入系统前即可播放 · 无需原厂软件常驻</strong>
+  <strong>写入钛坦 LG700 · 进入系统前即可播放</strong><br>
+  <img src="docs/assets/no-vendor-driver.svg" alt="无需钛坦水冷驱动软件常驻" width="284" height="36">
 </p>
 
 <p align="center">
