@@ -1,37 +1,92 @@
-# LG700 开机动画工具
+<h1 align="center">LG700 开机动画工具</h1>
 
-将本地图片或视频保存到 **TCOMAS / 钛坦 LG700 水冷屏幕**，在 Windows 启动前显示图片或循环播放动画。
+<p align="center">
+  把喜欢的图片与视频，留在你的水冷屏幕里。<br>
+  <strong>写入钛坦 LG700 · 进入系统前即可播放 · 无需原厂软件常驻</strong>
+</p>
 
-这是独立的社区工具。完成写入后，屏幕可自行播放，无需原厂软件常驻。项目不升级或替换屏幕的可执行固件。
+<p align="center">
+  <a href="https://github.com/GuoWQ222/TCOMAS-Boot-Animation-Tool/releases/latest"><img src="https://img.shields.io/github/v/release/GuoWQ222/TCOMAS-Boot-Animation-Tool?style=flat-square&amp;label=Release&amp;color=0d9488" alt="最新发布版本"></a>
+  <img src="https://img.shields.io/badge/Windows-x64-2563eb?style=flat-square" alt="Windows x64">
+  <img src="https://img.shields.io/badge/FFmpeg-已内置-0d9488?style=flat-square" alt="便携包内置 FFmpeg">
+  <a href="https://github.com/GuoWQ222/TCOMAS-Boot-Animation-Tool/actions/workflows/tests.yml"><img src="https://github.com/GuoWQ222/TCOMAS-Boot-Animation-Tool/actions/workflows/tests.yml/badge.svg" alt="离线测试状态"></a>
+</p>
 
-![LG700 开机动画工具界面预览](docs/assets/app-screenshot.png)
+<p align="center">
+  <a href="https://github.com/GuoWQ222/TCOMAS-Boot-Animation-Tool/releases/latest"><strong>⬇ 下载便携版</strong></a>
+  &nbsp; · &nbsp;
+  <a href="#quick-start">快速开始</a>
+  &nbsp; · &nbsp;
+  <a href="#features">功能一览</a>
+  &nbsp; · &nbsp;
+  <a href="https://github.com/GuoWQ222/TCOMAS-Boot-Animation-Tool/issues">问题反馈</a>
+</p>
 
-## 下载和使用
+<div align="center">
 
-1. 从 [Releases](https://github.com/GuoWQ222/TCOMAS-Boot-Animation-Tool/releases) 下载 Windows x64 便携包并解压。
-2. 便携 ZIP 已包含 **FFmpeg 8.1.1**，与 `LG700Tool.exe` 放在同一目录，解压后无需另外下载。也可以使用 PATH 中的 FFmpeg；只下载单独的 EXE 时需自行提供 FFmpeg。
-3. 连接 LG700，运行 `LG700Tool.exe`，等待设备识别。Release 已打包 Python 和所需库，不需要另行安装 Python。
-4. 点击“写入自定义视频”选择自己的视频或图片。程序自动转换、检查容量、备份现有素材、写入、完整读回比较，并设置离线播放模式。
-5. 让操作完成。随后真正切断屏幕供电再开机，观察进入 Windows 前的显示效果。
+<table align="center">
+  <tr>
+    <td align="center" width="33%">
+      <h3>🖼️ 图片常驻</h3>
+      <p>上传一张图片<br>让喜欢的画面一直显示</p>
+    </td>
+    <td align="center" width="34%">
+      <h3>🎞️ 视频循环</h3>
+      <p>将视频保存到屏幕<br>进入系统前也能循环播放</p>
+    </td>
+    <td align="center" width="33%">
+      <h3>📦 解压即用</h3>
+      <p>便携包已包含所需依赖<br>无需另装 Python 或 FFmpeg</p>
+    </td>
+  </tr>
+</table>
 
-图片为单帧常驻，视频为多帧循环；视频首帧还会自动保存为静态回退图。写入后可关闭本工具。原厂软件若继续传屏，会接管屏幕显示。
+</div>
 
-## 功能
+## 💬 问题反馈 · Issues
 
-- 识别水冷型号、固件 REV 和硬件中已保存的动画大小。
-- 读取 T'OWEI 中当前选中的图片或视频；此入口需要该软件留下的配置和可访问的本地素材。**只使用本地文件时不需要安装原厂软件。**
-- 本地动画预览；拖动转换画质滑块后计算真实的硬件动画包大小，超限明确报错。
-- 写入前自动保存现有开机动画和待机图，写入后全量读回并逐字节比较。
-- 首次原始备份单独保留；可恢复原始动画和待机图。
-- 修复已经保存动画的离线播放模式，无需重新转换或重写动画。
-- 预览与写入共享相同转码结果；目标内容相同时，完整核验后跳过重复擦写。
-- 备份、写入、校验整个会话暂停原厂传屏，结束或异常时恢复。
-- 保留 **8,192 字节**读写分块；读取响应严格校验、有限只读重试、USB 重连后重新完整读回。擦写和提交命令不自动重发。
+遇到故障或报错？请前往 [Issues 提交问题](https://github.com/GuoWQ222/TCOMAS-Boot-Animation-Tool/issues/new)，**完整描述操作步骤、报错内容和出现问题的全过程**，便于定位原因。
 
-## 故障处理
+> [!IMPORTANT]
+> 报错后，先确认当前操作已经停止，再正常关机并断电（拔掉电源线）。**确保水冷屏幕完全黑屏后，再重新上电。** 主机重启不一定切断屏幕供电；写入过程中请勿断电。
 
-写前备份失败会停止，尚未发送任何擦写命令；已经保存在屏幕中的动画仍可播放。应查看报错阶段和日志，不要把备份读取失败当成动画被覆盖。
+## 🖥️ 程序预览
 
-如果命令口持续返回旧响应或版本查询超时，先让操作停止，保存工作，正常关机后让**水冷屏幕完全熄灭至少 20 秒**。主机重启不一定切断 USB 或外接集线器供电。切勿在写入进行中断电。
+<p align="center">
+  <img src="docs/assets/app-screenshot.png" alt="LG700 开机动画工具：动画预览、画质调节、硬件写入与恢复" width="1000">
+</p>
 
-单次读取 6.73 MiB 动画约需 109 秒，完整备份和最终校验各需一次；不要因进度较慢强制退出。
+<a id="quick-start"></a>
+
+## 🚀 下载和使用
+
+1. **下载并解压**：从 [Releases](https://github.com/GuoWQ222/TCOMAS-Boot-Animation-Tool/releases/latest) 下载名称以 `windows-x64.zip` 结尾的便携包，完整解压到同一个文件夹。
+2. **连接并运行**：连接 LG700，运行 `LG700Tool.exe`，等待设备识别。
+3. **选择并写入**：点击“写入自定义视频”，选择本地视频或图片。程序会自动转换、检查容量、备份现有素材、写入、完整读回比较，并设置离线播放模式。
+4. **等待并查看**：操作完成后，真正切断屏幕供电再开机，观察进入 Windows 前的显示效果。
+
+<p align="center">
+  <img src="docs/assets/write-flow.svg" alt="写入流程：选择素材 → 转换与检查 → 自动备份 → 写入屏幕 → 完整读回校验" width="100%">
+</p>
+
+> [!TIP]
+> **便携包已包含 Python 运行环境与 FFmpeg，无需另外安装。** 图片为单帧常驻，视频为多帧循环；视频首帧会自动保存为静态回退图。写入后可关闭本工具。
+
+> [!NOTE]
+> 写入耗时参考约 **3 分钟**，实际取决于素材大小、备份和读回过程。请等待操作完成，期间不要断电或拔出设备。
+
+<a id="features"></a>
+
+## ✨ 功能一览
+
+| 功能 | 说明 |
+| :--- | :--- |
+| 🔎 **设备识别** | 识别水冷型号、固件 REV，以及硬件中已保存的动画大小。 |
+| 🎬 **当前素材读取** | 读取 T'OWEI 中当前选中的图片或视频，需要该软件留下的配置与可访问的本地素材。**只使用本地文件时，无需安装原厂软件。** |
+| 🎨 **画质与预览** | 支持本地动画预览；拖动转换画质滑块后，计算真实的硬件动画包大小，超限明确报错。 |
+| 💾 **自动备份** | 写入前自动保存现有开机动画和待机图；首次原始备份单独保留，可恢复原始素材。 |
+| ✅ **完整校验** | 写入后全量读回，逐字节比较；目标内容相同时，完整核验后跳过重复擦写。 |
+| 🔁 **转换复用** | 预览与写入共享同一份转码结果，避免重复转换。 |
+| 🛠️ **离线播放修复** | 修复已经保存动画的离线播放模式，无需重新转换或重写动画。 |
+| ⏸️ **原厂传屏协调** | 备份、写入与校验整个会话暂停原厂传屏，结束或异常时恢复。 |
+| 🔌 **通信校验** | 保留 **8,192 字节**读写分块；严格校验读取响应，有限只读重试，USB 重连后重新完整读回。擦写和提交命令不自动重发。 |
