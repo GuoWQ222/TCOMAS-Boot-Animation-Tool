@@ -1,0 +1,23 @@
+name: 问题反馈
+description: 报告可复现的问题
+body:
+  - type: input
+    id: device
+    attributes:
+      label: 屏幕型号和固件 REV
+      placeholder: LG700 / REV 0067
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 重现步骤及失败阶段
+      description: 请说明操作入口、Windows 版本、程序版本和结果。
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 必要日志
+      description: 隐去设备序列号、用户名和个人路径；不要上传设备备份或视频。
+      render: text
