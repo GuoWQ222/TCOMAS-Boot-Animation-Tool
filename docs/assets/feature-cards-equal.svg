@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="188" viewBox="0 0 1200 188" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">图片常驻、视频循环、解压即用</title>
+  <desc id="desc">三个等宽栏目。图片常驻：上传一张图片，让喜欢的画面一直显示。视频循环：将视频保存到屏幕，进入系统前也能循环播放。解压即用：便携包解压即可运行，内置 Python 与 FFmpeg。</desc>
+  <style>
+    .surface { fill: #ffffff; stroke: #d1d9e0; }
+    .divider { stroke: #d1d9e0; }
+    .heading { fill: #1f2328; }
+    .detail { fill: #394553; }
+    @media (prefers-color-scheme: dark) {
+      .surface { fill: #0d1117; stroke: #3d444d; }
+      .divider { stroke: #3d444d; }
+      .heading { fill: #f0f6fc; }
+      .detail { fill: #c9d1d9; }
+    }
+  </style>
+  <rect class="surface" x=".5" y=".5" width="1199" height="187" rx="8"/>
+  <path class="divider" d="M400 .5V187.5M800 .5V187.5"/>
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <rect x="122" y="44" width="30" height="26" rx="3" fill="#e7f8f4" stroke="#159a88" stroke-width="2"/>
+    <circle cx="144" cy="52" r="3" fill="#f3b94d"/>
+    <path d="M125 66L133 55L141 64L146 59L150 66Z" fill="#31b499"/>
+    <rect x="522" y="43" width="30" height="28" rx="3" fill="#ede9fe" stroke="#8271be" stroke-width="2"/>
+    <path d="M528 44V70M546 44V70M523 51H528M523 59H528M523 66H528M546 51H551M546 59H551M546 66H551" stroke="#8271be" stroke-width="1.5"/>
+    <path d="M534 51L542 57L534 63Z" fill="#8271be"/>
+    <path d="M922 51L937 43L952 51V65L937 73L922 65Z" fill="#e8c9a8" stroke="#ae8058" stroke-width="2"/>
+    <path d="M922 51L937 59L952 51M937 59V73M930 47L945 55V62" stroke="#ae8058" stroke-width="2"/>
+  </g>
+  <g font-family="Segoe UI, Microsoft YaHei, Noto Sans CJK SC, sans-serif">
+    <g class="heading" font-size="28" font-weight="700">
+      <text x="166" y="67">图片常驻</text>
+      <text x="566" y="67">视频循环</text>
+      <text x="966" y="67">解压即用</text>
+    </g>
+    <g class="detail" text-anchor="middle" font-size="22">
+      <text x="200" y="112">上传一张图片</text>
+      <text x="200" y="147">让喜欢的画面一直显示</text>
+      <text x="600" y="112">将视频保存到屏幕</text>
+      <text x="600" y="147">进入系统前也能循环播放</text>
+      <text x="1000" y="112">便携包解压即可运行</text>
+      <text x="1000" y="147">内置 Python 与 FFmpeg</text>
+    </g>
+  </g>
+</svg>
