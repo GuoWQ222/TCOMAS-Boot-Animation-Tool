@@ -66,7 +66,7 @@
 4. **等待并查看**：操作完成后，真正切断屏幕供电再开机，观察进入 Windows 前的显示效果。
 
 <p align="center">
-  <img src="docs/assets/write-flow.svg" alt="写入流程概览：01 选择素材 → 02 写入屏幕 → 03 完整读回校验" width="100%">
+  <img src="docs/assets/write-flow-3steps.svg" alt="写入流程概览：01 选择素材 → 02 写入屏幕 → 03 完整读回校验" width="100%">
 </p>
 
 > [!TIP]
