@@ -73,7 +73,7 @@ class App:
         self.operation_stage = '就绪'
         self.log_path = configure_logging()
         self.quality_worker = QualityPreview(self.events)
-        root.title("LG700 开机动画工具 v1.0.5 · mode0/USB 时序修复版")
+        root.title("LG700 开机动画工具 v1.0.6 · 播放读回时序修复版")
         root.geometry("1000x840")
         root.minsize(950, 810)
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -497,28 +497,13 @@ class App:
                 self.enable_offline(device, directory)
             except Exception as error:
                 raise RuntimeError('素材已写入并校验通过，但离线播放模式设置失败：' + str(error)) from error
-            # Mode 1 has no readable getter, but both asset records can still
-            # be checked after the mode command.  This catches the exact case
-            # where an old standby image would otherwise remain unnoticed.
-            # The mode command may reset the USB interface after its version
-            # probe. Reopen the command handle for this read-only check; do
-            # not resend either the asset write or the mode command.
-            self.stage('最终读回 mode1 动画与 mode0 首帧')
-            time.sleep(2)
-            for selector, name, expected in ((1, 'mode1 开机动画', data),
-                                              (0, 'mode0 待机首帧', frame)):
-                try:
-                    actual, _ = device.read_asset(selector, lambda p: self.note(
-                        f'{name}最终读回：{p:.0%}', p * 100))
-                except (OSError, TimeoutError):
-                    self.note(f'{name}首次最终读回遇到 USB 重连，正在重新打开读通道；没有重发写入或模式命令。')
-                    device._reconnect_command_interface()
-                    actual, _ = device.read_asset(selector, lambda p: self.note(
-                        f'{name}重连后最终读回：{p:.0%}', p * 100))
-                if actual != expected:
-                    raise OSError(f'{name}最终读回与目标不一致；已停止，未继续发送命令')
-                self.note(f'{name}最终读回一致：{sha256(actual)[:16]}…')
-        self.note("自定义素材写入校验通过：mode1 已写入完整视频，mode0 已写入第一帧，并已最终读回确认。请完全断电再开机验证。")
+            # Once mode 1 starts, the firmware reads the boot package while
+            # it is playing. A concurrent host read can return a valid-size
+            # container with one or more torn JPEG frames. All writes and
+            # full readbacks above are already complete, so do not read the
+            # boot region again after starting playback. The mode command's
+            # communication probe remains read-only and does not resend it.
+        self.note("自定义素材写入及 mode0 提交前读回均通过，已切换 mode1 离线循环；播放期间不再读取开机区，避免固件读写竞争。")
 
     def restore(self):
         try:

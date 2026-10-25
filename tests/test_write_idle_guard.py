@@ -20,7 +20,7 @@ class WriteIdleGuardTests(unittest.TestCase):
         device.set_offline_loop.side_effect=lambda enabled,*args:order.append(('mode',enabled))
         data = sample_boot()
         frame = unpack_boot(data)[0]
-        device.read_asset.side_effect=[(frame, {}), (data, {}), (frame, {})]
+        device.read_asset.side_effect=[(frame, {})]
         def write(selector,*args):
             order.append(('write-and-verify',selector))
             if selector==1 and fail_boot:raise OSError('test interruption')
