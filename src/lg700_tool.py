@@ -50,7 +50,7 @@ class App:
         self.operation_stage = '就绪'
         self.log_path = configure_logging()
         self.quality_worker = QualityPreview(self.events)
-        root.title("LG700 开机动画工具")
+        root.title("LG700 开机动画工具 · 通信修复测试版")
         root.geometry("1000x840")
         root.minsize(950, 810)
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -413,6 +413,7 @@ class App:
             self.stage('素材写入及完整读回校验')
             assets = [(0, "待机图", frame), (1, "开机动画", data)]
             for selector, name, asset in assets:
+                self.stage(f'{name}写入及完整读回校验')
                 def update(p, name=name):
                     stage, fraction = ("读回校验", p - 1) if p > 1 else ("写入", p)
                     self.note(f"{name} {stage}：{fraction:.0%}", fraction * 100)

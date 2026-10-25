@@ -24,7 +24,19 @@ MAX_PACKETS = 50
 MAX_JPEG = 200_000
 READ_CHUNK = 8192
 WRITE_CHUNK = 8192
+COMMAND_SETTLE_SECONDS = 0.010
 log = logging.getLogger('lg700.transport')
+
+
+def open_command_transport(path):
+    if os.name == 'nt':
+        from windows_hid import WindowsHID
+        transport = WindowsHID()
+    else:
+        import hid
+        transport = hid.device()
+    transport.open_path(path)
+    return transport
 
 
 class ReadResponseError(OSError):
@@ -169,8 +181,7 @@ class LG700:
                     self._kernel.CloseHandle(handle)
                     raise RuntimeError('另一个写入工具正在使用屏幕，请等待它完成后重试')
                 self._mutex = handle
-            self.hid = hid.device()
-            self.hid.open_path(self.info["path"])
+            self.hid = open_command_transport(self.info["path"])
             self.revision = struct.unpack_from("<H", self.query(0x87))[0]
         except Exception:
             self.close()
@@ -194,6 +205,17 @@ class LG700:
                 self._mutex = None
 
     def query(self, op, payload=b"", timeout_ms=6000):
+        # A completed host read can precede the firmware's command cleanup.
+        # Pace complete commands, preserving report bytes and 8 KiB chunks.
+        remaining = COMMAND_SETTLE_SECONDS - (time.monotonic() - getattr(self, '_last_query_finished', 0))
+        if remaining > 0:
+            time.sleep(remaining)
+        try:
+            return self._query(op, payload, timeout_ms)
+        finally:
+            self._last_query_finished = time.monotonic()
+
+    def _query(self, op, payload=b"", timeout_ms=6000):
         if op == 0x1E:
             if payload not in (b'\x00', b'\x01'):
                 raise ValueError('离线播放模式只允许 0 或 1')
@@ -280,8 +302,7 @@ class LG700:
                        and d.get('serial_number') == expected_serial]
             if len(matches) == 1:
                 try:
-                    self.hid = hid.device()
-                    self.hid.open_path(matches[0]['path'])
+                    self.hid = open_command_transport(matches[0]['path'])
                     revision = struct.unpack_from('<H', self.query(0x87, timeout_ms=400))[0]
                     if revision != expected_revision:
                         raise RuntimeError('重新连接后固件版本变化，已停止')

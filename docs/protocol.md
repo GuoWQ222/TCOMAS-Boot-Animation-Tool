@@ -1,5 +1,7 @@
 # LG700 协议分析与验证记录
 
+v1.0.1 的 Windows HID 收发与命令间隔调整、两轮完整读取实测及限制，见 [通信验证记录](communication-validation.md)。下文保留原有协议分析和历史验证范围。
+
 ## 正常播放路径
 
 本机 T'OWEI 2.1.28 是 Electron 程序。其 `config.js` 将 LG700 配为 640×480、目标 30 FPS、JPEG 质量 70。`ledPipeline.js` 通过原生 addon 调用 `XYDataCenter.dll`，后者使用 OpenCV 解码、TurboJPEG 编码和 HID 写入，把画面不断传给屏幕。在线应用素材本身不会因此永久覆盖硬件开机素材。

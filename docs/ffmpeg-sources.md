@@ -11,7 +11,7 @@ Windows 便携 ZIP 中的 `ffmpeg.exe` 使用以下未修改的上游源码独�
 
 ## 下载对应源码
 
-从 [v1.0.0 Release](https://github.com/GuoWQ222/TCOMAS-Boot-Animation-Tool/releases/tag/v1.0.0) 下载 Windows x64 便携 ZIP 并解压，其中的对应源码包为：
+从 [v1.0.1 Release](https://github.com/GuoWQ222/TCOMAS-Boot-Animation-Tool/releases/tag/v1.0.1) 下载 Windows x64 便携 ZIP 并解压，其中的对应源码包为：
 
 `TCOMAS-Boot-Animation-Tool/third-party-sources.zip`
 
