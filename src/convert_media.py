@@ -12,20 +12,20 @@ _conversion_cache = OrderedDict()
 _conversion_lock = threading.Lock()
 
 
-def cached_build_asset(source, quality=75, report=lambda s: None, allow_oversize=False):
+def cached_build_asset(source, quality=75, report=lambda s: None, allow_oversize=False, *, fill_screen=False):
     """Share exact converted bytes between quality preview and hardware writing."""
     source = Path(source)
     quality = max(35, min(90, int(quality)))
     def signature():
         stat = source.stat()
-        return str(source.resolve()), stat.st_mtime_ns, stat.st_size, quality
+        return str(source.resolve()), stat.st_mtime_ns, stat.st_size, quality, bool(fill_screen)
     with _conversion_lock:
         key = signature()
         if key in _conversion_cache:
             data = _conversion_cache.pop(key)
             report('复用已完成的相同画质转换，动画数据不变。')
         else:
-            data = build_asset(source, quality, report, allow_oversize=True)
+            data = build_asset(source, quality, report, allow_oversize=True, fill_screen=fill_screen)
         if signature() != key:
             raise ValueError('转换期间源文件发生变化，请重新选择素材')
         _conversion_cache[key] = data
@@ -53,7 +53,7 @@ def find_ffmpeg():
     raise FileNotFoundError("未找到 FFmpeg。请将 ffmpeg.exe 放在程序目录，或安装到 PATH。")
 
 
-def build_asset(source, quality=75, report=lambda s: None, allow_oversize=False):
+def build_asset(source, quality=75, report=lambda s: None, allow_oversize=False, *, fill_screen=False):
     """Encode once; preview may measure an oversized package without writing it."""
     source = Path(source)
     quality = max(35, min(90, int(quality)))
@@ -61,7 +61,11 @@ def build_asset(source, quality=75, report=lambda s: None, allow_oversize=False)
         from PIL import Image, ImageOps
         import io
         with Image.open(source) as im:
-            im = ImageOps.contain(im.convert("RGB"), (640, 480))
+            im = im.convert("RGB")
+            if fill_screen:
+                im = ImageOps.fit(im, (640, 480), method=Image.Resampling.LANCZOS, centering=(.5, .5))
+            else:
+                im = ImageOps.contain(im, (640, 480))
             canvas = Image.new("RGB", (640, 480))
             canvas.paste(im, ((640 - im.width) // 2, (480 - im.height) // 2))
             buffer = io.BytesIO()
@@ -71,12 +75,16 @@ def build_asset(source, quality=75, report=lambda s: None, allow_oversize=False)
         import sys
         near = Path(sys.executable).parent / "ffmpeg.exe"
         ffmpeg = str(near) if near.exists() else find_ffmpeg()
-        report("正在转换为 640×480 JPEG 序列……")
+        report("正在转换为 640×480 JPEG 序列（等比裁剪铺满）……" if fill_screen else "正在转换为 640×480 JPEG 序列……")
+        # reset_sar keeps anamorphic video proportional when producing square pixels.
+        video_filter = ("fps=30,scale=640:480:force_original_aspect_ratio=increase:reset_sar=1:flags=lanczos,"
+                        "crop=640:480:(iw-ow)/2:(ih-oh)/2") if fill_screen else (
+                        "fps=30,scale=640:480:force_original_aspect_ratio=decrease:flags=lanczos,"
+                        "pad=640:480:(ow-iw)/2:(oh-ih)/2")
         with tempfile.TemporaryDirectory(prefix="lg700_convert_") as folder:
             output = str(Path(folder) / "frame_%05d.jpg")
             args = [ffmpeg, "-hide_banner", "-loglevel", "error", "-i", str(source),
-                    "-vf", "fps=30,scale=640:480:force_original_aspect_ratio=decrease:flags=lanczos,"
-                           "pad=640:480:(ow-iw)/2:(oh-ih)/2",
+                    "-vf", video_filter,
                     "-an", "-frames:v", "4096", "-q:v", str(max(2, (100 - quality) // 5)),
                     "-pix_fmt", "yuvj420p", output]
             result = subprocess.run(args, capture_output=True, text=True,
@@ -98,9 +106,9 @@ def build_asset(source, quality=75, report=lambda s: None, allow_oversize=False)
     return data
 
 
-def convert(source, destination, quality=75, report=lambda s: None):
+def convert(source, destination, quality=75, report=lambda s: None, *, fill_screen=False):
     destination = Path(destination)
-    data = cached_build_asset(source, quality, report)
+    data = cached_build_asset(source, quality, report, fill_screen=fill_screen)
     frames = unpack_boot(data, inspect_jpeg=False)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(data)

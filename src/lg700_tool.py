@@ -11,13 +11,14 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageDraw
 from lg700_core import LG700, capacity, unpack_boot, restore_file
 from convert_media import convert
 from vendor_pause import pause_vendor
 from current_media import detect_current_media
 from backup_store import data_home, new_snapshot, preserve_original, original_directory, device_home
 from quality_preview import QualityPreview
+from hover_help import question_icon
 
 
 def configure_logging():
@@ -35,6 +36,27 @@ def timestamp():
     return datetime.now(timezone(timedelta(hours=8))).strftime("%Y%m%d_%H%M%S_%f")
 
 
+def crop_checkbutton_images(root, style):
+    images = []
+    for selected, disabled in ((False, False), (True, False), (False, True), (True, True)):
+        icon = Image.new('RGBA', (88, 88))
+        draw = ImageDraw.Draw(icon)
+        fill = ('#a5b5bc' if disabled else '#0089b9') if selected else '#ffffff'
+        outline = '#b6bdc1' if disabled else ('#0089b9' if selected else '#87949b')
+        draw.rounded_rectangle((8, 8, 80, 80), radius=13, fill=fill, outline=outline, width=5)
+        if selected:
+            draw.line(((25, 44), (39, 58), (64, 29)), fill='white', width=10, joint='curve')
+        images.append(ImageTk.PhotoImage(icon.resize((22, 22), Image.Resampling.LANCZOS), master=root))
+    style.element_create('Crop.indicator', 'image', images[0],
+        ('disabled selected', images[3]), ('disabled', images[2]), ('selected', images[1]), sticky='w')
+    style.layout('Crop.TCheckbutton', [('Checkbutton.padding', {'sticky': 'nswe', 'children': [
+        ('Crop.indicator', {'side': 'left', 'sticky': 'w'}),
+        ('Checkbutton.focus', {'side': 'left', 'sticky': 'nswe', 'children': [
+            ('Checkbutton.label', {'sticky': 'nswe'})]})]})])
+    style.configure('Crop.TCheckbutton', font=('Microsoft YaHei UI', 11), padding=(0, 3, 0, 3))
+    return images
+
+
 class App:
     def __init__(self, root):
         self.root, self.events, self.busy = root, queue.Queue(), False
@@ -50,7 +72,7 @@ class App:
         self.operation_stage = '就绪'
         self.log_path = configure_logging()
         self.quality_worker = QualityPreview(self.events)
-        root.title("LG700 开机动画工具 · 通信修复测试版")
+        root.title("LG700 开机动画工具 v1.0.1 · 通信修复测试版")
         root.geometry("1000x840")
         root.minsize(950, 810)
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -108,6 +130,19 @@ class App:
         self.quality_hint_label = ttk.Label(panel, textvariable=self.quality_hint,
                                            foreground='#526172', wraplength=265)
         self.quality_hint_label.pack(anchor='w', pady=(4, 0))
+        self.fill_screen = tk.BooleanVar(value=False)
+        self.crop_indicator_images = crop_checkbutton_images(root, style)
+        fill_row = ttk.Frame(panel)
+        fill_row.pack(anchor='w', pady=(8, 0))
+        self.fill_checkbutton = ttk.Checkbutton(fill_row, text='等比裁剪铺满屏幕', variable=self.fill_screen,
+            command=self.fill_mode_changed, style='Crop.TCheckbutton')
+        self.fill_checkbutton.pack(side='left')
+        self.fill_help = question_icon(fill_row,
+            '不勾选：按原比例完整显示，比例与屏幕不同时会补黑边。\n\n'
+            '勾选：保持原比例，居中裁剪后铺满 640×480 屏幕，不拉伸画面。\n'
+            '比 4:3 更宽的素材裁左右，更高的素材裁上下；正好 4:3 时不裁剪。\n\n'
+            '可能裁掉边缘内容，不会自动识别或跟随人物。切换只更新本地预览和大小，点击写入后才保存到屏幕。')
+        self.fill_help.pack(side='left', padx=(5, 0))
         ttk.Label(panel, text="支持 MP4、GIF、JPG、PNG 等。\n"
                   "硬件动画区：11 MiB\n可用素材：11,534,316 字节\n"
                   "按转码后的实际大小检查，超限报错。\n"
@@ -153,6 +188,10 @@ class App:
         self.quality_title.set(f'转换画质：{quality}')
         self.request_quality_preview()
 
+    def fill_mode_changed(self):
+        if not self.busy:
+            self.request_quality_preview(delay=0)
+
     def request_quality_preview(self, delay=350, play=False):
         self.preview_generation += 1
         self.preview_ready = False
@@ -176,12 +215,13 @@ class App:
         if self.busy or not self.preview_source:
             return
         self.quality_worker.request(self.preview_generation, self.preview_source,
-                                    self.selected_quality())
+                                    self.selected_quality(), self.fill_screen.get())
 
     def accept_quality_result(self, event):
-        _, generation, source, quality, data, error = event
+        _, generation, source, quality, fill_screen, data, error = event
         if (self.busy or generation != self.preview_generation or
-                source != self.preview_source or quality != self.selected_quality()):
+                source != self.preview_source or quality != self.selected_quality() or
+                fill_screen != self.fill_screen.get()):
             return
         if error:
             self.quality_size.set('动画大小：计算失败')
@@ -224,6 +264,7 @@ class App:
             self.root.after_cancel(self.preview_after)
             self.preview_after = None
         self.quality_scale.configure(state='disabled')
+        self.fill_checkbutton.configure(state='disabled')
         for button in self.buttons:
             button.configure(state="disabled")
         def worker():
@@ -293,6 +334,7 @@ class App:
                 elif event[0] == "done":
                     self.busy = False
                     self.quality_scale.configure(state='normal')
+                    self.fill_checkbutton.configure(state='normal')
                     for button in self.buttons:
                         button.configure(state="normal")
                     if self.preview_source and not self.preview_ready:
@@ -380,10 +422,11 @@ class App:
         if not source:
             return
         quality = self.selected_quality()
+        fill_screen = bool(self.fill_screen.get())
         self.events.put(('custom_source', source))
         def job():
             dest = data_home() / "Generated" / (timestamp() + ".lg700boot")
-            data = convert(source, dest, quality, self.note)
+            data = convert(source, dest, quality, self.note, fill_screen=fill_screen)
             self.events.put(('prepared_asset', quality, data))
             self.note(f"转换完成：{len(data):,} / {capacity(1):,} 字节，开始自动备份和写入")
             self.write_data(data)
@@ -391,11 +434,12 @@ class App:
 
     def write_current(self):
         quality = self.selected_quality()
+        fill_screen = bool(self.fill_screen.get())
         def job():
             media = detect_current_media()  # re-read selection immediately before writing
             self.events.put(("current", media))
             dest = data_home() / "Generated" / (timestamp() + "_current.lg700boot")
-            data = convert(media["path"], dest, quality, self.note)
+            data = convert(media["path"], dest, quality, self.note, fill_screen=fill_screen)
             self.events.put(('prepared_asset', quality, data))
             self.note(f"当前动画转换完成：{len(data):,} / {capacity(1):,} 字节")
             self.write_data(data)
