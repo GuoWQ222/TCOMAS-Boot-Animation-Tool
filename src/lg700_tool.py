@@ -72,7 +72,7 @@ class App:
         self.operation_stage = '就绪'
         self.log_path = configure_logging()
         self.quality_worker = QualityPreview(self.events)
-        root.title("LG700 开机动画工具 v1.0.1 · 离线写入保护版")
+        root.title("LG700 开机动画工具 v1.0.2 · mode1 恢复修复版")
         root.geometry("1000x840")
         root.minsize(950, 810)
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -478,7 +478,7 @@ class App:
                 self.enable_offline(device, directory)
             except Exception as error:
                 raise RuntimeError('素材已写入并校验通过，但离线播放模式设置失败：' + str(error)) from error
-        self.note("素材写入校验通过，已设置离线播放。原厂传屏已恢复，请关机开机验证。")
+        self.note("自定义素材写入校验通过，已自动切换 mode1 离线循环。请关机开机验证。")
 
     def restore(self):
         try:
@@ -512,8 +512,12 @@ class App:
                     device.write_asset(selector, original[selector], path,
                                        update, recovery=True)
                 self.events.put(('hardware_size', len(original[1])))
-                device.set_offline_loop(False, path)
-            self.note("原厂动画和待机图恢复完成，读回校验通过；已发送原厂默认播放模式 0。")
+                # Restore mode 1 so the backed-up factory boot animation is
+                # what the screen plays after power-on. Mode 0 hands control
+                # back to the vendor's online sender and can show its cached
+                # image instead of the restored boot package.
+                device.set_offline_loop(True, path)
+            self.note("原始动画和待机图恢复完成，读回校验通过；已自动切换 mode1 离线循环。请关机开机验证。")
         self.run(job)
 
     def close(self):
