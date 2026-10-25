@@ -36,7 +36,7 @@
     </td>
     <td align="center" width="33%">
       <h3>📦 解压即用</h3>
-      <p>便携包已包含所需依赖<br>无需另装 Python 或 FFmpeg</p>
+      <p>便携包解压即可运行<br>内置 Python 与 FFmpeg</p>
     </td>
   </tr>
 </table>
@@ -66,7 +66,7 @@
 4. **等待并查看**：操作完成后，真正切断屏幕供电再开机，观察进入 Windows 前的显示效果。
 
 <p align="center">
-  <img src="docs/assets/write-flow.svg" alt="写入流程：选择素材 → 转换与检查 → 自动备份 → 写入屏幕 → 完整读回校验" width="100%">
+  <img src="docs/assets/write-flow.svg" alt="写入流程概览：01 选择素材 → 04 写入屏幕 → 05 完整读回校验" width="100%">
 </p>
 
 > [!TIP]
