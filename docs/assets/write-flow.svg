@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="140" viewBox="0 0 1280 140" fill="none" role="img" aria-labelledby="title desc">
   <title id="title">从本地素材到屏幕的写入流程</title>
-  <desc id="desc">01 选择素材，04 写入屏幕，05 完整读回校验。</desc>
+  <desc id="desc">01 选择素材，02 写入屏幕，03 完整读回校验。</desc>
   <defs>
     <linearGradient id="panel" x1="0" y1="0" x2="0" y2="140" gradientUnits="userSpaceOnUse"><stop stop-color="#102C38"/><stop offset="1" stop-color="#0D232E"/></linearGradient>
   </defs>
@@ -16,8 +16,8 @@
   <g font-family="Segoe UI, Arial, Microsoft YaHei, sans-serif">
     <g fill="#7EE4C5" font-size="13" font-weight="650" letter-spacing="1">
       <text x="25" y="42">01 / SELECT</text>
-      <text x="473" y="42">04 / WRITE</text>
-      <text x="921" y="42">05 / VERIFY</text>
+      <text x="473" y="42">02 / WRITE</text>
+      <text x="921" y="42">03 / VERIFY</text>
     </g>
     <g fill="#EEF9F8" font-size="21" font-weight="600">
       <text x="25" y="76">选择素材</text>
