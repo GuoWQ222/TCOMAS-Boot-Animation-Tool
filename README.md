@@ -20,7 +20,7 @@
   &nbsp; · &nbsp;
   <a href="#features">功能一览</a>
   &nbsp; · &nbsp;
-  <a href="docs/screen-control-flow.html">控制原理流程图</a>
+  <a href="https://guowq222.github.io/TCOMAS-Boot-Animation-Tool/screen-control-flow.html">控制原理流程图</a>
   &nbsp; · &nbsp;
   <a href="https://github.com/GuoWQ222/TCOMAS-Boot-Animation-Tool/issues">问题反馈</a>
 </p>
