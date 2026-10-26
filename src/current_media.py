@@ -1,4 +1,4 @@
-"""Read the active T'OWEI LG700 media selection without opening its database.
+"""Read a model's active T'OWEI media selection without opening its database.
 
 Understands Chromium localStorage LevelDB logs and Snappy SSTables. Pure Python;
 the database is read only and is never locked, repaired, or modified.
@@ -7,6 +7,7 @@ import json
 import os
 import struct
 from pathlib import Path
+from device_profiles import resolve_profile
 
 
 def varint(data, offset):
@@ -167,7 +168,7 @@ def local_storage(directory, key_name):
         except FileNotFoundError:
             continue  # Chromium may compact an SSTable while being read
     if latest is None or latest[1] != 1:
-        raise FileNotFoundError("未找到 LG700 当前页面记录，请先在钛坦软件中应用动画")
+        raise FileNotFoundError(f"未找到 {key_name} 页面记录，请先在钛坦软件中应用动画")
     value = latest[2]
     if not value:
         raise ValueError("当前动画记录为空")
@@ -175,7 +176,8 @@ def local_storage(directory, key_name):
     return json.loads(value[1:].decode(encoding))
 
 
-def detect_current_media():
+def detect_current_media(profile=None):
+    profile = resolve_profile(profile)
     appdata = Path(os.environ.get("APPDATA", str(Path.home() / "AppData/Roaming")))
     problems = []
     for name in ("T'OWEI", "Tcomas"):
@@ -184,7 +186,7 @@ def detect_current_media():
         if not directory.exists():
             continue
         try:
-            state = local_storage(directory, "lg700_lastPageState")
+            state = local_storage(directory, profile.key + '_lastPageState')
             data = state.get("data", {})
             preset = data.get("currentPreset", {})
             if not isinstance(preset, dict):
@@ -207,4 +209,4 @@ def detect_current_media():
             raise FileNotFoundError("当前动画的本地文件不存在，请在钛坦软件中重新应用素材")
         except (ValueError, OSError, KeyError, struct.error) as error:
             problems.append(str(error))
-    raise FileNotFoundError("；".join(problems) or "未发现 T'OWEI 的 LG700 动画配置")
+    raise FileNotFoundError("；".join(problems) or f"未发现 T'OWEI 的 {profile.name} 动画配置")

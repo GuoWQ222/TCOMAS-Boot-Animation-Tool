@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 from sample_assets import sample_boot
 from lg700_core import LG700, ReadResponseError, unpack_boot
 from lg700_tool import App
+from device_profiles import LG700_PROFILE
 
 
 META = {'selector': 1, 'size': 32, 'active_record': 0x400000,
@@ -67,6 +68,9 @@ class ReadRecoveryTests(unittest.TestCase):
             raise OSError('read failed before writing')
         fake_device.backup.side_effect = fail_backup
         app = Mock()
+        app.target_profile.return_value = LG700_PROFILE
+        app.device_identity = None
+        app.vendor_session.side_effect = paused
         data = sample_boot()
         with patch('lg700_tool.pause_vendor', paused), \
                 patch('lg700_tool.LG700', return_value=fake_device), \

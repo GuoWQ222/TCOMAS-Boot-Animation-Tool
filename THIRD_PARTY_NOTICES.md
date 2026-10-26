@@ -1,6 +1,6 @@
 # Third-party notices
 
-LG700Tool v1.0.1 includes the following components in the Windows executable:
+LG700Tool v1.2.2 includes the following components in the Windows executable:
 
 | Component | Version | License / reference |
 | --- | --- | --- |

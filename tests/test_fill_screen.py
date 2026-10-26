@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw
 import convert_media
 from lg700_core import unpack_boot
 from quality_preview import QualityPreview
+from device_profiles import LG700_PROFILE
 
 
 def first_frame(data):
@@ -98,12 +99,14 @@ class FillScreenTests(unittest.TestCase):
         App.accept_quality_result(app, ('quality_result', 2, 'video.mp4', 75, True, b'new', None))
         app.apply_preview_data.assert_called_once_with(75, b'new')
 
-    def test_both_gui_write_buttons_pass_the_selected_mode(self):
+    def test_custom_write_button_passes_the_selected_mode(self):
         import lg700_tool
         for mode in (False, True):
-            for method in ('choose_media', 'write_current'):
+            for method in ('choose_media',):
                 with self.subTest(mode=mode, method=method):
                     app = Mock()
+                    app.target_profile.return_value = LG700_PROFILE
+                    app.device_identity = None
                     app.selected_quality.return_value = 75
                     app.fill_screen.get.return_value = mode
                     app.run.side_effect = lambda job: job()
@@ -113,8 +116,10 @@ class FillScreenTests(unittest.TestCase):
                          patch.object(lg700_tool, 'data_home', return_value=Path(self.folder.name)), \
                          patch.object(lg700_tool, 'convert', return_value=b'prepared') as conversion:
                         getattr(lg700_tool.App, method)(app)
-                    self.assertEqual(conversion.call_args.kwargs, {'fill_screen': mode})
-                    app.write_data.assert_called_once_with(b'prepared')
+                    self.assertEqual(conversion.call_args.kwargs,
+                                     {'fill_screen': mode, 'profile': LG700_PROFILE})
+                    app.write_data.assert_called_once_with(b'prepared', profile=LG700_PROFILE,
+                                                          expected_identity=None)
 
 
 if __name__ == '__main__':

@@ -1,0 +1,96 @@
+{
+  "model": "LG600",
+  "revision": "0075",
+  "method": "Actual modified application, no in-memory source adaptation; fully mocked HID; real V75 firmware reassembler, packetizer, command handler, storage, boot parser and configuration records in Unicorn",
+  "hardware_access": false,
+  "native_enumeration_passed": true,
+  "video_conversion": [
+    {
+      "fill_screen": false,
+      "frames": 9,
+      "dimensions": [
+        480,
+        480
+      ],
+      "bytes": 122498,
+      "cache_reuse_identical": true
+    },
+    {
+      "fill_screen": true,
+      "frames": 9,
+      "dimensions": [
+        480,
+        480
+      ],
+      "bytes": 133022,
+      "cache_reuse_identical": true
+    }
+  ],
+  "converted_file_saved_identically": true,
+  "existing_boot_backup_exact": true,
+  "existing_standby_backup_exact": true,
+  "backup_manifest_model": "lg600",
+  "backup_manifest_pid": "1520",
+  "boot_write_and_full_readback_exact": true,
+  "standby_first_frame_write_and_readback_exact": true,
+  "mode0_then_mode1_with_communication_probe": true,
+  "mode1_visual_playback_verified": false,
+  "duplicate_application_performed_no_flash_writes": true,
+  "oversize_rejected": true,
+  "unknown_revision_write_blocked": true,
+  "app_restore_original_boot_and_standby_exact": true,
+  "real_boot_parser_loaded_JPEGs_identically": true,
+  "mode1_tick_sequence": [
+    [
+      1,
+      2
+    ],
+    [
+      2,
+      0
+    ],
+    [
+      0,
+      1
+    ],
+    [
+      1,
+      2
+    ],
+    [
+      2,
+      0
+    ]
+  ],
+  "mode1_wraps_to_frame_zero": true,
+  "config_saved_and_mode1_reloaded_in_fresh_RAM": true,
+  "assets_reloaded_in_fresh_RAM": true,
+  "physical_panel_power_cycle_tested": false,
+  "async_config_save_timing_tested": false,
+  "command_counts": {
+    "0x87": 11,
+    "0x0C": 34,
+    "0x0D": 190,
+    "0x1E": 6,
+    "0x0A": 4,
+    "0x0B": 66
+  },
+  "target_bytes": 133022,
+  "target_sha256": "8ecd594809228765bb979a2c078ec5c74f40bd60f2ba4e1f3884747bcf44bf6f",
+  "program_events_first_application": 31,
+  "metadata_after_target_write": {
+    "selector": 1,
+    "size": 133022,
+    "active_record": "0x400000",
+    "next_record": "0x430000",
+    "extra": "0x0"
+  },
+  "standby_metadata_after_target_write": {
+    "selector": 0,
+    "size": 14622,
+    "active_record": "0xf00000",
+    "next_record": "0xf10000",
+    "extra": "0x0"
+  },
+  "firmware_update_sha256": "3903df2c6180d24cc9d22f6ba07c9eea67e5a5093b22391521b07dc172a6f234"
+}

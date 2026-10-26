@@ -1,6 +1,6 @@
-"""LG700 boot animation utility: GUI and a read-only diagnostic CLI."""
+"""TCOMAS LG700 / LG600 / LX800 assets: GUI and read-only diagnostics."""
 import argparse
-import io
+import contextlib
 import json
 import logging
 from logging.handlers import RotatingFileHandler
@@ -20,6 +20,14 @@ from current_media import detect_current_media
 from backup_store import data_home, new_snapshot, preserve_original, original_directory, device_home
 from quality_preview import QualityPreview
 from hover_help import question_icon
+from device_profiles import PROFILES, LG700_PROFILE, resolve_profile, connection_identity
+from preview_geometry import preview_frame
+from startup_notice import StartupNotice
+from ui_theme import (configure_theme, MeshHeader, RoundedCard, SoftProgress, ResponsiveLayout,
+                      theme_font, scalable_image, PAGE, MUTED, PRIMARY, PREVIEW)
+from ui_settings import needs_startup_notice, remember_notice_read
+
+APP_VERSION = '1.2.2'
 
 
 def configure_logging():
@@ -38,28 +46,31 @@ def timestamp():
 
 
 def crop_checkbutton_images(root, style):
+    if hasattr(root, '_crop_indicator_images'):
+        return root._crop_indicator_images
     images = []
     for selected, disabled in ((False, False), (True, False), (False, True), (True, True)):
         icon = Image.new('RGBA', (88, 88))
         draw = ImageDraw.Draw(icon)
-        fill = ('#a5b5bc' if disabled else '#0089b9') if selected else '#ffffff'
-        outline = '#b6bdc1' if disabled else ('#0089b9' if selected else '#87949b')
+        fill = ('#c7c8df' if disabled else PRIMARY) if selected else '#ffffff'
+        outline = '#d6d7e7' if disabled else (PRIMARY if selected else '#b6b9d2')
         draw.rounded_rectangle((8, 8, 80, 80), radius=13, fill=fill, outline=outline, width=5)
         if selected:
             draw.line(((25, 44), (39, 58), (64, 29)), fill='white', width=10, joint='curve')
-        images.append(ImageTk.PhotoImage(icon.resize((22, 22), Image.Resampling.LANCZOS), master=root))
+        images.append(scalable_image(root, icon.resize((22, 22), Image.Resampling.LANCZOS)))
     style.element_create('Crop.indicator', 'image', images[0],
         ('disabled selected', images[3]), ('disabled', images[2]), ('selected', images[1]), sticky='w')
     style.layout('Crop.TCheckbutton', [('Checkbutton.padding', {'sticky': 'nswe', 'children': [
         ('Crop.indicator', {'side': 'left', 'sticky': 'w'}),
         ('Checkbutton.focus', {'side': 'left', 'sticky': 'nswe', 'children': [
             ('Checkbutton.label', {'sticky': 'nswe'})]})]})])
-    style.configure('Crop.TCheckbutton', font=('Microsoft YaHei UI', 11), padding=(0, 3, 0, 3))
+    style.configure('Crop.TCheckbutton', font=theme_font(root, 10), padding=(0, 3, 0, 3))
+    root._crop_indicator_images = images
     return images
 
 
 class App:
-    def __init__(self, root):
+    def __init__(self, root, profile=None):
         self.root, self.events, self.busy = root, queue.Queue(), False
         self.asset, self.frames, self.preview_index, self.playing = None, [], 0, False
         self.current_media = None
@@ -70,57 +81,88 @@ class App:
         self.preview_wanted_playing = False
         self.tick_after = None
         self.model_summary = ''
+        self.profile = resolve_profile(profile) if profile is not None else None
+        self.device_identity = None
+        self.preview_size = (480, 360)
         self.operation_stage = '就绪'
         self.log_path = configure_logging()
         self.quality_worker = QualityPreview(self.events)
-        root.title("LG700 开机动画工具 v1.0.6 · 播放读回时序修复版")
-        root.geometry("1000x840")
-        root.minsize(950, 810)
+        root.title(f"钛钽开机动画工具 v{APP_VERSION} · LG700 / LG600 / LX800")
+        root.geometry("1120x860")
+        root.minsize(1080, 840)
         root.protocol("WM_DELETE_WINDOW", self.close)
-        style = ttk.Style(root)
-        style.theme_use("clam")
-        style.configure("TButton", padding=(12, 8), font=("Microsoft YaHei UI", 10))
-        style.configure("TLabel", font=("Microsoft YaHei UI", 10))
-        style.configure("Title.TLabel", font=("Microsoft YaHei UI", 20, "bold"))
-        outer = ttk.Frame(root, padding=22)
+        style = configure_theme(root)
+        outer = tk.Frame(root, background=PAGE, padx=18, pady=16)
+        self.main_frame = outer
         outer.pack(fill="both", expand=True)
-        ttk.Label(outer, text="LG700 开机动画", style="Title.TLabel").pack(anchor="w")
-        self.device_text = tk.StringVar(value="正在检测屏幕……")
-        ttk.Label(outer, textvariable=self.device_text).pack(anchor="w", pady=(8, 15))
-        row = ttk.Frame(outer)
-        row.pack(fill="x")
+        MeshHeader(outer, '把喜欢的画面，留在屏幕里',
+            '钛钽开机动画工具  ·  LG700 / LG600 / LX800', version=APP_VERSION).pack(fill='x', pady=(0, 10))
+        device_card = RoundedCard(outer, padding=12)
+        device_card.pack(fill='x', pady=(0, 10))
+        target_row = ttk.Frame(device_card.body)
+        target_row.pack(fill='x')
+        ttk.Label(target_row, text='目标设备', style='CardTitle.TLabel').pack(side='left', padx=(0, 14))
+        self.model_choice = tk.StringVar(value=self.profile.name if self.profile else '自动识别')
+        self.model_selector = ttk.Combobox(target_row, textvariable=self.model_choice,
+            values=('自动识别', *(p.name for p in PROFILES)), state='readonly', width=12)
+        self.model_selector.pack(side='left')
+        self.model_selector.bind('<<ComboboxSelected>>', self.model_changed)
+        row = ttk.Frame(target_row)
+        row.pack(side='right')
         self.buttons = []
         for text, action in [("识别水冷与当前动画", self.detect), ("备份屏幕素材", self.backup),
                              ("修复当前离线播放", self.repair_offline)]:
-            button = ttk.Button(row, text=text, command=action)
-            button.pack(side="left", padx=(0, 10))
+            button = ttk.Button(row, text=text, command=action, style='Small.TButton')
+            button.pack(side="left", padx=(7, 0))
             self.buttons.append(button)
-        body = ttk.Frame(outer)
-        body.pack(fill="both", expand=True, pady=(18, 10))
-        left = ttk.Frame(body)
-        left.pack(side="left", fill="both", expand=True, padx=(0, 22))
-        self.canvas = tk.Canvas(left, width=480, height=360, bg="#151b24", highlightthickness=0)
-        self.canvas.pack(anchor="w")
+        self.notice_button = ttk.Button(row, text='提醒事项', command=self.show_notice, style='Small.TButton')
+        self.notice_button.pack(side='left', padx=(7, 0))
+        self.profile_note = tk.StringVar(value='自动识别设备；无设备时可选择型号预览素材')
+        ttk.Label(device_card.body, textvariable=self.profile_note, style='Subtle.TLabel').pack(anchor='w', pady=(4, 0))
+        self.device_text = tk.StringVar(value="正在检测屏幕……")
+        ttk.Label(device_card.body, textvariable=self.device_text, foreground='#696b9c').pack(anchor='w', pady=(2, 0))
+        body = tk.Frame(outer, background=PAGE)
+        self.content_body = body
+        body.pack(fill="both", expand=True, pady=(0, 10))
+        body.columnconfigure(0, weight=5, minsize=520)
+        body.columnconfigure(1, weight=4, minsize=420)
+        body.rowconfigure(0, weight=1)
+        preview_card = RoundedCard(body)
+        preview_card.grid(row=0, column=0, sticky='nsew', padx=(0, 10))
+        left = preview_card.body
+        preview_heading = ttk.Frame(left)
+        preview_heading.pack(fill='x', pady=(0, 10))
+        ttk.Label(preview_heading, text='画面预览', style='CardTitle.TLabel').pack(side='left')
+        ttk.Label(preview_heading, text='本地预览 · 30 FPS', style='Subtle.TLabel').pack(side='right')
+        preview_area = tk.Frame(left, background=PREVIEW, width=480, height=360)
+        self.preview_area = preview_area
+        preview_area.pack_propagate(False)
+        preview_area.pack(fill='both', expand=True)
+        self.canvas = tk.Canvas(preview_area, width=480, height=360, bg=PREVIEW, highlightthickness=0)
+        self.canvas.pack(expand=True)
+        preview_area.bind('<Configure>', self.resize_preview)
         self.canvas.create_text(240, 180, text="选择动画素材", fill="#b6c2d1",
-                                font=("Microsoft YaHei UI", 16))
+                                font=theme_font(root, 16))
         self.file_text = tk.StringVar(value="未选择素材")
-        ttk.Label(left, textvariable=self.file_text, wraplength=490).pack(anchor="w", pady=(8, 0))
-        panel = ttk.Frame(body, width=280)
-        panel.pack(side="right", fill="y")
-        for text, action in [("当前动画写入硬件", self.write_current),
-                             ("写入自定义视频", self.choose_media),
-                             ("恢复钛坦原始动画", self.restore),
-                             ("播放 / 暂停本地预览", self.toggle_preview)]:
-            button = ttk.Button(panel, text=text, command=action)
-            button.pack(fill="x", pady=(0, 10))
+        self.file_label = ttk.Label(left, textvariable=self.file_text, wraplength=495, style='Subtle.TLabel')
+        self.file_label.pack(anchor="w", pady=(10, 0))
+        controls_card = RoundedCard(body)
+        controls_card.grid(row=0, column=1, sticky='nsew')
+        panel = controls_card.body
+        ttk.Label(panel, text='素材与写入', style='CardTitle.TLabel').pack(anchor='w', pady=(0, 10))
+        for text, action, button_style in [("写入自定义视频", self.choose_media, 'Primary.TButton'),
+                             ("恢复钛坦原始动画", self.restore, 'TButton'),
+                             ("播放 / 暂停本地预览", self.toggle_preview, 'TButton')]:
+            button = ttk.Button(panel, text=text, command=action, style=button_style)
+            button.pack(fill="x", pady=(0, 7))
             self.buttons.append(button)
         quality_row = ttk.Frame(panel)
-        quality_row.pack(fill='x', pady=(8, 4))
+        quality_row.pack(fill='x', pady=(7, 4))
         self.quality_title = tk.StringVar(value='转换画质：75')
         self.quality_size = tk.StringVar(value='动画大小：未计算')
         ttk.Label(quality_row, textvariable=self.quality_title).pack(side='left')
         self.quality_size_label = ttk.Label(quality_row, textvariable=self.quality_size,
-                                           foreground='#526172')
+                                           foreground=MUTED)
         self.quality_size_label.pack(side='right', padx=(8, 0))
         self.quality = tk.DoubleVar(value=75)
         self.last_quality_value = 75
@@ -129,7 +171,7 @@ class App:
         self.quality_scale.pack(fill="x")
         self.quality_hint = tk.StringVar(value='拖动后自动计算，尚未写入硬件')
         self.quality_hint_label = ttk.Label(panel, textvariable=self.quality_hint,
-                                           foreground='#526172', wraplength=265)
+                                           foreground=MUTED, wraplength=395)
         self.quality_hint_label.pack(anchor='w', pady=(4, 0))
         self.fill_screen = tk.BooleanVar(value=False)
         self.crop_indicator_images = crop_checkbutton_images(root, style)
@@ -138,28 +180,86 @@ class App:
         self.fill_checkbutton = ttk.Checkbutton(fill_row, text='等比裁剪铺满屏幕', variable=self.fill_screen,
             command=self.fill_mode_changed, style='Crop.TCheckbutton')
         self.fill_checkbutton.pack(side='left')
-        self.fill_help = question_icon(fill_row,
-            '不勾选：按原比例完整显示，比例与屏幕不同时会补黑边。\n\n'
-            '勾选：保持原比例，居中裁剪后铺满 640×480 屏幕，不拉伸画面。\n'
-            '比 4:3 更宽的素材裁左右，更高的素材裁上下；正好 4:3 时不裁剪。\n\n'
-            '可能裁掉边缘内容，不会自动识别或跟随人物。切换只更新本地预览和大小，点击写入后才保存到屏幕。')
+        self.fill_help = question_icon(fill_row, self.crop_help_text(LG700_PROFILE))
         self.fill_help.pack(side='left', padx=(5, 0))
-        ttk.Label(panel, text="支持 MP4、GIF、JPG、PNG 等。\n"
-                  "硬件动画区：11 MiB\n可用素材：11,534,316 字节\n"
-                  "按转码后的实际大小检查，超限报错。\n"
-                  "写前自动备份，写后完整读回校验。\n"
-                  "本地预览 30 FPS，硬件节奏由固件决定。",
-                  wraplength=265, foreground="#526172").pack(anchor="w", pady=8)
-        ttk.Label(outer, text="备份位置：%LOCALAPPDATA%\\TCOMAS-LG700-Tool\\Backups\\",
-                  foreground="#526172").pack(anchor="w", pady=(0, 8))
+        self.format_label = ttk.Label(panel, text="MP4 / GIF / JPG / PNG  ·  CPU 转码\n"
+                  "动画容量 11 MiB（11,534,316 字节）\n"
+                  "转换后检查容量，写前备份，写后完整校验。\n"
+                  "硬件播放节奏由固件决定。",
+                  wraplength=395, foreground=MUTED, font=theme_font(root, 9))
+        self.format_label.pack(anchor="w", pady=(9, 0))
+        status_card = RoundedCard(outer, padding=12)
+        status_card.pack(fill='x')
+        status_row = ttk.Frame(status_card.body)
+        status_row.pack(fill='x', pady=(0, 8))
         self.status = tk.StringVar(value="就绪")
-        ttk.Label(outer, textvariable=self.status, wraplength=850).pack(anchor="w", pady=(0, 6))
-        self.progress = ttk.Progressbar(outer, maximum=100)
+        self.status_label = ttk.Label(status_row, textvariable=self.status, foreground='#62688b', wraplength=940)
+        self.status_label.pack(side='left')
+        self.progress_text = tk.StringVar(value='0%')
+        ttk.Label(status_row, textvariable=self.progress_text, foreground=PRIMARY,
+                  font=theme_font(root, 10, 'bold', family='Segoe UI')).pack(side='right')
+        self.progress = SoftProgress(status_card.body, maximum=100)
         self.progress.pack(fill="x")
-        self.log = tk.Text(outer, height=5, state="disabled", font=("Consolas", 9))
-        self.log.pack(fill="x", pady=(10, 0))
+        self.log = tk.Text(status_card.body, height=2, state="disabled", font=theme_font(root, 9),
+            background='#f8f8fd', foreground='#82869e', relief='flat', borderwidth=0,
+            highlightthickness=0, padx=8, pady=5, selectbackground='#dddafa', wrap='word')
+        self.log.pack(fill="x", pady=(8, 0))
+        self.backup_label = ttk.Label(outer, text="备份位置：%LOCALAPPDATA%\\TCOMAS-LG700-Tool\\Backups\\",
+                                      style='Page.TLabel')
+        self.backup_label.pack(anchor='w', pady=(7, 0))
+        ResponsiveLayout.activate(root, (1120, 860), self.apply_ui_scale)
         root.after(100, self.poll)
         self.detect()
+
+    def apply_ui_scale(self, scale):
+        self.main_frame.configure(padx=round(18 * scale), pady=round(16 * scale))
+        self.content_body.columnconfigure(0, minsize=round(520 * scale))
+        self.content_body.columnconfigure(1, minsize=round(420 * scale))
+        self.preview_area.configure(width=round(480 * scale), height=round(360 * scale))
+        self.file_label.configure(wraplength=round(495 * scale))
+        self.quality_hint_label.configure(wraplength=round(395 * scale))
+        self.format_label.configure(wraplength=round(395 * scale))
+        self.status_label.configure(wraplength=round(940 * scale))
+        self.resize_preview()
+
+    def resize_preview(self, event=None):
+        width, height = self.preview_area.winfo_width(), self.preview_area.winfo_height()
+        if min(width, height) <= 1:
+            return
+        aspect = self.target_profile().size[0] / self.target_profile().size[1]
+        new_width = min(width, round(height * aspect))
+        size = max(1, new_width), max(1, round(new_width / aspect))
+        if size == self.preview_size:
+            return
+        self.preview_size = size
+        self.canvas.configure(width=size[0], height=size[1])
+        if self.frames:
+            self.draw()
+        else:
+            for item in self.canvas.find_all():
+                if self.canvas.type(item) == 'text':
+                    self.canvas.coords(item, size[0] / 2, size[1] / 2)
+
+    def show_notice(self):
+        if self.busy:
+            return
+        geometry, minimum = self.root.geometry(), self.root.minsize()
+        was_playing = self.playing
+        self.playing = False
+        self.stop_preview_timer()
+        self.main_frame.pack_forget()
+        def return_to_main():
+            self.root.title(f'钛钽开机动画工具 v{APP_VERSION} · LG700 / LG600 / LX800')
+            self.root.minsize(*minimum)
+            self.root.geometry(geometry)
+            self.root.protocol('WM_DELETE_WINDOW', self.close)
+            self.main_frame.pack(fill='both', expand=True)
+            ResponsiveLayout.activate(self.root, (1120, 860), self.apply_ui_scale)
+            if was_playing and self.frames and self.preview_ready:
+                self.playing = True
+                self.tick()
+        StartupNotice(self.root, on_read=return_to_main, version=APP_VERSION,
+                      returning=True, on_close=self.close)
 
     def note(self, text, percent=None):
         if percent is None:
@@ -172,6 +272,40 @@ class App:
 
     def selected_quality(self):
         return max(35, min(90, round(self.quality.get())))
+
+    def target_profile(self):
+        return self.profile or LG700_PROFILE
+
+    @staticmethod
+    def crop_help_text(profile):
+        panel = ('LX800 为圆形可视区域，480×480 是编码画布。圆外四角不可见；'
+                 '无论是否勾选，重要内容请放在圆内，预览已模拟圆形遮罩。\n\n'
+                 if profile.visible_shape == 'circle' else '')
+        return (panel + '不勾选：按原比例放入编码画布，比例不同时会补黑边。\n\n'
+                f'勾选：保持原比例，居中裁剪后铺满 {profile.dimensions} 屏幕，不拉伸画面。\n'
+                '比屏幕比例更宽的素材裁左右，更高的素材裁上下。\n\n'
+                '可能裁掉边缘内容，不会自动识别或跟随人物。切换只更新本地预览和大小，点击写入后才保存到屏幕。')
+
+    def apply_profile_view(self, profile):
+        self.profile = profile
+        self.resize_preview()
+        shape = '圆形可视区域 · ' if profile.visible_shape == 'circle' else ''
+        self.profile_note.set(f'{profile.name} · {profile.dimensions} · {shape}{profile.validation_note}')
+        self.fill_help.hover_help.text = self.crop_help_text(profile)
+
+    def model_changed(self, event=None):
+        if self.busy:
+            return
+        self.device_identity = None
+        value = self.model_choice.get()
+        self.profile = None if value == '自动识别' else resolve_profile(value)
+        if self.profile is not None:
+            self.apply_profile_view(self.profile)
+        else:
+            self.apply_profile_view(LG700_PROFILE)
+            self.profile = None
+            self.profile_note.set('自动识别设备；无设备时可选择型号预览素材')
+        self.detect()
 
     def update_hardware_size(self, size):
         self.device_text.set(f'{self.model_summary} · 当前屏幕动画 {size / 1048576:.2f} MiB（已保存）')
@@ -192,6 +326,13 @@ class App:
     def fill_mode_changed(self):
         if not self.busy:
             self.request_quality_preview(delay=0)
+
+    @contextlib.contextmanager
+    def vendor_session(self):
+        # Only suspend the sender for the device transaction. The context
+        # restores it on success or failure; no persistent process ownership.
+        with pause_vendor():
+            yield
 
     def request_quality_preview(self, delay=350, play=False):
         self.preview_generation += 1
@@ -216,13 +357,14 @@ class App:
         if self.busy or not self.preview_source:
             return
         self.quality_worker.request(self.preview_generation, self.preview_source,
-                                    self.selected_quality(), self.fill_screen.get())
+                                    self.selected_quality(), self.fill_screen.get(), self.target_profile())
 
     def accept_quality_result(self, event):
-        _, generation, source, quality, fill_screen, data, error = event
+        _, generation, source, quality, fill_screen, data, error, *model = event
         if (self.busy or generation != self.preview_generation or
                 source != self.preview_source or quality != self.selected_quality() or
-                fill_screen != self.fill_screen.get()):
+                fill_screen != self.fill_screen.get() or
+                (model and model[0] != self.target_profile().key)):
             return
         if error:
             self.quality_size.set('动画大小：计算失败')
@@ -236,11 +378,11 @@ class App:
         self.stop_preview_timer()
         self.playing = False
         self.asset = data
-        self.frames = unpack_boot(data, inspect_jpeg=False)
+        self.frames = unpack_boot(data, inspect_jpeg=False, profile=self.target_profile())
         self.preview_index = 0
         self.preview_ready = True
         self.quality_size.set(f'动画大小：{len(data) / 1048576:.2f} MiB')
-        excess = len(data) - capacity(1)
+        excess = len(data) - capacity(1, self.target_profile())
         color = '#b42318' if excess > 0 else '#166534'
         self.quality_size_label.configure(foreground=color)
         self.quality_hint_label.configure(foreground=color)
@@ -266,6 +408,8 @@ class App:
             self.preview_after = None
         self.quality_scale.configure(state='disabled')
         self.fill_checkbutton.configure(state='disabled')
+        self.notice_button.configure(state='disabled')
+        self.model_selector.configure(state='disabled')
         for button in self.buttons:
             button.configure(state="disabled")
         def worker():
@@ -290,34 +434,38 @@ class App:
                     self.status.set(event[1])
                     if event[2] is not None:
                         self.progress["value"] = event[2]
+                        self.progress_text.set(f'{max(0, min(100, event[2])):.0f}%')
                     else:
                         self.log.configure(state="normal")
                         self.log.insert("end", event[1] + "\n")
                         self.log.see("end")
                         self.log.configure(state="disabled")
                 elif event[0] == "device":
-                    self.model_summary = f'{event[1]} · REV {event[2]:04X} · 开机区 11 MiB'
+                    self.apply_profile_view(event[4])
+                    self.device_identity = event[5]
+                    self.model_summary = f'{event[4].name} · REV {event[2]:04X} · {event[4].dimensions} · 开机区 11 MiB'
                     self.update_hardware_size(event[3])
                 elif event[0] == 'hardware_size':
                     self.update_hardware_size(event[1])
                 elif event[0] == 'quality_result':
                     self.accept_quality_result(event)
                 elif event[0] == "reset_current":
+                    self.device_identity = None
                     self.current_media = None
                     self.preview_source = None
                     self.preview_generation += 1
                     self.preview_ready = False
                     self.frames, self.playing = [], False
                     self.canvas.delete("all")
-                    self.canvas.create_text(240, 180, text="正在识别当前素材……", fill="#b6c2d1",
-                                            font=("Microsoft YaHei UI", 16))
+                    self.canvas.create_text(self.preview_size[0] / 2, self.preview_size[1] / 2, text="正在识别当前素材……", fill="#b6c2d1",
+                                            font=theme_font(self.root, 16))
                     self.file_text.set("正在识别当前素材……")
                 elif event[0] == "media_missing":
                     self.quality_size.set('动画大小：无素材')
                     self.file_text.set("未识别到软件当前动画，可使用本地视频或图片")
                     self.canvas.delete("all")
-                    self.canvas.create_text(240, 180, text="请选择本地视频或图片", fill="#b6c2d1",
-                                            font=("Microsoft YaHei UI", 16))
+                    self.canvas.create_text(self.preview_size[0] / 2, self.preview_size[1] / 2, text="请选择本地视频或图片", fill="#b6c2d1",
+                                            font=theme_font(self.root, 16))
                 elif event[0] == "current":
                     self.current_media = event[1]
                     self.preview_source = event[1]['path']
@@ -332,11 +480,13 @@ class App:
                     self.apply_preview_data(event[1], event[2])
                 elif event[0] == "error":
                     self.status.set("操作失败：" + event[1])
-                    messagebox.showerror("LG700", event[1], parent=self.root)
+                    messagebox.showerror("钛钽开机动画工具", event[1], parent=self.root)
                 elif event[0] == "done":
                     self.busy = False
                     self.quality_scale.configure(state='normal')
                     self.fill_checkbutton.configure(state='normal')
+                    self.notice_button.configure(state='normal')
+                    self.model_selector.configure(state='readonly')
                     for button in self.buttons:
                         button.configure(state="normal")
                     if self.preview_source and not self.preview_ready:
@@ -346,16 +496,23 @@ class App:
         self.root.after(100, self.poll)
 
     def detect(self):
+        requested = None if self.model_choice.get() == '自动识别' else resolve_profile(self.model_choice.get())
+        if requested is not None:
+            self.apply_profile_view(requested)
+        self.device_text.set('正在检测屏幕……')
         def job():
             self.events.put(("reset_current",))
             self.stage('识别设备')
-            with pause_vendor(), LG700() as device:
+            with self.vendor_session(), LG700(profile=requested) as device:
                 meta = device.metadata(1)
-                model = device.info.get('product_string', 'TCOMAS LG700').strip()
-                self.events.put(("device", model, device.revision, meta['size']))
+                profile = device.profile
+                model = device.info.get('product_string', profile.name).strip()
+                self.events.put(("device", model, device.revision, meta['size'], profile,
+                                 connection_identity(device.info)))
                 self.note("设备连接成功；备份目录：" + str(device_home(device)))
+                self.note(profile.validation_note)
             try:
-                media = detect_current_media()
+                media = detect_current_media(profile)
                 self.events.put(("current", media))
                 self.note("已识别钛坦软件当前动画：" + media["name"])
             except (OSError, ValueError) as error:
@@ -364,9 +521,10 @@ class App:
         self.run(job)
 
     def backup(self):
+        profile, identity = self.target_profile(), self.device_identity
         def job():
             self.stage('备份屏幕素材（只读）')
-            with pause_vendor(), LG700() as device:
+            with self.vendor_session(), LG700(profile=profile, expected_identity=identity) as device:
                 directory = new_snapshot(device, "manual")
                 device.backup(directory, lambda name, p: self.note(f"备份 {name}：{p:.0%}", p * 100))
             self.note("备份完成：" + str(directory))
@@ -382,21 +540,22 @@ class App:
         self.note('模式接口没有读取功能；关机开机后的实际播放仍需观察确认。')
 
     def repair_offline(self):
+        profile, identity = self.target_profile(), self.device_identity
         def job():
             self.stage('修复前备份（尚未修改播放模式）')
-            with pause_vendor(), LG700() as device:
+            with self.vendor_session(), LG700(profile=profile, expected_identity=identity) as device:
                 directory = new_snapshot(device, 'before_playback_repair')
                 device.backup(directory, lambda name, p: self.note(f'修复前备份 {name}：{p:.0%}', p * 100))
                 preserve_original(device, directory)
                 self.stage('设置离线播放模式')
                 self.enable_offline(device, directory)
-            self.note('离线播放设置已发送；原动画未重写，原厂传屏已恢复。')
+            self.note('离线播放设置已发送；原动画未重写，官方传屏按勾选状态处理。')
         self.run(job)
 
     def draw(self):
         if not self.frames:
             return
-        im = Image.open(io.BytesIO(self.frames[self.preview_index])).resize((480, 360))
+        im = preview_frame(self.frames[self.preview_index], self.target_profile(), self.preview_size)
         self.photo = ImageTk.PhotoImage(im)
         self.canvas.delete("all")
         self.canvas.create_image(0, 0, anchor="nw", image=self.photo)
@@ -425,32 +584,22 @@ class App:
             return
         quality = self.selected_quality()
         fill_screen = bool(self.fill_screen.get())
+        profile, identity = self.target_profile(), self.device_identity
         self.events.put(('custom_source', source))
         def job():
             dest = data_home() / "Generated" / (timestamp() + ".lg700boot")
-            data = convert(source, dest, quality, self.note, fill_screen=fill_screen)
+            data = convert(source, dest, quality, self.note, fill_screen=fill_screen, profile=profile)
             self.events.put(('prepared_asset', quality, data))
-            self.note(f"转换完成：{len(data):,} / {capacity(1):,} 字节，开始自动备份和写入")
-            self.write_data(data)
+            self.note(f"{profile.name} 转换完成：{len(data):,} / {capacity(1, profile):,} 字节，开始自动备份和写入")
+            self.write_data(data, profile=profile, expected_identity=identity)
         self.run(job)
 
-    def write_current(self):
-        quality = self.selected_quality()
-        fill_screen = bool(self.fill_screen.get())
-        def job():
-            media = detect_current_media()  # re-read selection immediately before writing
-            self.events.put(("current", media))
-            dest = data_home() / "Generated" / (timestamp() + "_current.lg700boot")
-            data = convert(media["path"], dest, quality, self.note, fill_screen=fill_screen)
-            self.events.put(('prepared_asset', quality, data))
-            self.note(f"当前动画转换完成：{len(data):,} / {capacity(1):,} 字节")
-            self.write_data(data)
-        self.run(job)
-
-    def write_data(self, data):
-        frame = unpack_boot(data)[0]
+    def write_data(self, data, *, profile=None, expected_identity=None):
+        profile = resolve_profile(profile) if profile is not None else self.target_profile()
+        identity = self.device_identity if expected_identity is None else expected_identity
+        frame = unpack_boot(data, profile=profile)[0]
         self.stage('写前备份（尚未发送擦除或写入）')
-        with pause_vendor(), LG700() as device:
+        with self.vendor_session(), LG700(profile=profile, expected_identity=identity) as device:
             directory = new_snapshot(device, "before_write")
             device.backup(directory, lambda name, p: self.note(f"写前备份 {name}：{p:.0%}", p * 100))
             self.stage('核验原始备份（尚未发送擦除或写入）')
@@ -506,8 +655,9 @@ class App:
         self.note("自定义素材写入及 mode0 提交前读回均通过，已切换 mode1 离线循环；播放期间不再读取开机区，避免固件读写竞争。")
 
     def restore(self):
+        profile, identity = self.target_profile(), self.device_identity
         try:
-            with pause_vendor(), LG700() as device:
+            with self.vendor_session(), LG700(profile=profile, expected_identity=identity) as device:
                 path = str(original_directory(device))
         except Exception:
             path = filedialog.askdirectory(title="选择包含 manifest.json 的钛坦原始备份目录",
@@ -515,13 +665,13 @@ class App:
         if not path:
             return
         try:
-            original = {s: restore_file(path, s) for s in (0, 1)}
+            original = {s: restore_file(path, s, profile=profile) for s in (0, 1)}
         except Exception as error:
             messagebox.showerror("恢复失败", str(error), parent=self.root)
             return
         def job():
             self.stage('恢复前备份')
-            with pause_vendor(), LG700() as device:
+            with self.vendor_session(), LG700(profile=profile, expected_identity=identity) as device:
                 try:
                     directory = new_snapshot(device, "before_restore")
                     device.backup(directory, lambda name, p: self.note(f"恢复前备份 {name}：{p:.0%}", p * 100))
@@ -530,13 +680,18 @@ class App:
                 self.stage('恢复前暂停离线循环')
                 device.set_offline_loop(False, path)
                 self.stage('恢复素材并完整读回校验')
-                for selector in (0, 1):
+                for selector in (1, 0):
                     def update(p, selector=selector):
                         fraction = p - 1 if p > 1 else p
                         self.note(f"恢复素材 {selector}：{fraction:.0%}", fraction * 100)
                     device.write_asset(selector, original[selector], path,
                                        update, recovery=True)
                 self.events.put(('hardware_size', len(original[1])))
+                self.stage('等待恢复的 mode0 待机记录提交完成')
+                time.sleep(3)
+                settled, _ = device.read_asset(0)
+                if settled != original[0]:
+                    raise OSError('恢复的待机首帧在提交等待后已回退；未发送 mode1 命令')
                 # Restore mode 1 so the backed-up factory boot animation is
                 # what the screen plays after power-on. Mode 0 hands control
                 # back to the vendor's online sender and can show its cached
@@ -547,7 +702,7 @@ class App:
 
     def close(self):
         if self.busy:
-            messagebox.showinfo("LG700", "操作尚未完成，请等待写入或备份结束。", parent=self.root)
+            messagebox.showinfo("钛钽开机动画工具", "操作尚未完成，请等待写入或备份结束。", parent=self.root)
         else:
             self.quality_worker.close()
             self.root.destroy()
@@ -557,22 +712,47 @@ def main():
     if sys.platform == 'win32':
         import ctypes
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Local.Tools.LG700BootTool")
-    parser = argparse.ArgumentParser(description="LG700 native boot animation tool")
+    parser = argparse.ArgumentParser(description="TCOMAS LG700 / LG600 / LX800 boot animation tool")
+    parser.add_argument('--model', choices=('auto', *(p.key for p in PROFILES)), default='auto',
+                        help='select a model; auto requires exactly one supported display')
     parser.add_argument("--inspect", action="store_true", help="read-only device probe, writes JSON to stdout")
     parser.add_argument("--output", type=Path, help="save the read-only diagnostic JSON")
     args = parser.parse_args()
+    profile = None if args.model == 'auto' else resolve_profile(args.model)
     if args.inspect:
-        with LG700() as device:
-            result = {"model": "TCOMAS LG700", "revision": f"{device.revision:04X}",
-                      "boot": device.metadata(1), "standby": device.metadata(0)}
-        encoded = json.dumps(result, indent=2)
+        status = 0
+        try:
+            with LG700(profile=profile) as device:
+                result = {"model": "TCOMAS " + device.profile.name,
+                          "vid": f'{device.profile.vid:04X}', "pid": f'{device.profile.pid:04X}',
+                          "size": list(device.profile.size),
+                          "visible_shape": device.profile.visible_shape,
+                          "validation": device.profile.validation_note,
+                          "write_revision_supported": device.revision in device.profile.supported_revisions,
+                          "revision": f"{device.revision:04X}",
+                          "boot": device.metadata(1), "standby": device.metadata(0)}
+        except (OSError, RuntimeError, ValueError) as error:
+            # A busy device is a normal diagnostic result. Do not open the
+            # frozen executable's fatal-exception dialog over another writer.
+            result = {'error': str(error), 'model_requested': args.model, 'read_only': True}
+            status = 2
+        encoded = json.dumps(result, indent=2, ensure_ascii=False)
         if args.output:
             args.output.write_text(encoded, encoding="utf8")
-        else:
+        elif sys.stdout is not None:
             print(encoded)
+        return status
     else:
-        App(tk.Tk()).root.mainloop()
+        root = tk.Tk()
+        if needs_startup_notice():
+            def start_after_read():
+                remember_notice_read()
+                App(root, profile=profile)
+            StartupNotice(root, on_read=start_after_read, version=APP_VERSION)
+        else:
+            App(root, profile=profile)
+        root.mainloop()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

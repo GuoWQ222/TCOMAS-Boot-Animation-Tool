@@ -1,4 +1,4 @@
-"""TCOMAS LG700 native boot-asset protocol, Windows HID.
+"""TCOMAS LG700 / LG600 / LX800 native boot-asset protocol, Windows HID.
 
 Reverse engineered from the owner's device (REV 0067) and vendor V75.
 This module never updates executable firmware. It exposes asset commands and
@@ -14,6 +14,9 @@ import os
 import struct
 import time
 from pathlib import Path
+from device_profiles import (LG700_PROFILE, PROFILES, resolve_profile, profile_for_info,
+    is_command_interface, connection_identity, backup_device_key, manifest_profile,
+    check_manifest_device)
 
 VID, PID = 0x1A2C, 0x151C
 SECTOR = 65536
@@ -75,8 +78,9 @@ def pack_boot(jpegs: list[bytes]) -> bytes:
     return header + b"\0" + table + body + terminal
 
 
-def unpack_boot(data: bytes, inspect_jpeg=True) -> list[bytes]:
+def unpack_boot(data: bytes, inspect_jpeg=True, *, profile=None) -> list[bytes]:
     from PIL import Image
+    profile = resolve_profile(profile)
     if len(data) < 33:
         raise ValueError("动画包太短")
     check, size, table_size, prefix, flags = struct.unpack_from("<IIIHH", data)
@@ -84,7 +88,7 @@ def unpack_boot(data: bytes, inspect_jpeg=True) -> list[bytes]:
     if check != checksum_record(size, table_size, prefix, flags):
         raise ValueError("动画包头校验失败")
     if flags & 0xF000 != 0x1000 or not count:
-        raise ValueError("不是 LG700 原厂动画格式")
+        raise ValueError("不是支持的原厂动画格式")
     if size != len(data) - 16 or table_size != count * 16:
         raise ValueError("动画包长度或帧表错误")
     table_start = 16 + prefix
@@ -109,8 +113,8 @@ def unpack_boot(data: bytes, inspect_jpeg=True) -> list[bytes]:
             raise ValueError(f"第 {n} 帧过大")
         if inspect_jpeg:
             with Image.open(io.BytesIO(jpeg)) as im:
-                if im.size != (640, 480) or im.info.get("progressive"):
-                    raise ValueError(f"第 {n} 帧必须是 640×480 非渐进 JPEG")
+                if im.size != profile.size or im.info.get("progressive"):
+                    raise ValueError(f"第 {n} 帧必须是 {profile.dimensions} 非渐进 JPEG")
                 im.verify()
         frames.append(jpeg)
         previous_end = end
@@ -119,25 +123,26 @@ def unpack_boot(data: bytes, inspect_jpeg=True) -> list[bytes]:
     return frames
 
 
-def capacity(selector):
-    begin, end = REGIONS[selector]
+def capacity(selector, profile=None):
+    begin, end = resolve_profile(profile).regions[selector]
     return end - begin - 20  # storage record is outside the animation container
 
 
-def validate_asset(selector, data):
-    if selector not in REGIONS:
+def validate_asset(selector, data, *, profile=None):
+    profile = resolve_profile(profile)
+    if selector not in profile.regions:
         raise ValueError("只允许开机动画和待机图区域")
-    begin, end = REGIONS[selector]
+    begin, end = profile.regions[selector]
     required = ((len(data) + 3) // 4 * 4 + 20 + SECTOR - 1) // SECTOR * SECTOR
     if not data or begin + required > end:
         raise ValueError(f"素材超过分区容量：{len(data):,} 字节")
     if selector == 1:
-        unpack_boot(data)
+        unpack_boot(data, profile=profile)
     else:
         from PIL import Image
         with Image.open(io.BytesIO(data)) as im:
-            if im.format != "JPEG" or im.size != (640, 480) or im.info.get("progressive"):
-                raise ValueError("待机图必须是 640×480 非渐进 JPEG")
+            if im.format != "JPEG" or im.size != profile.size or im.info.get("progressive"):
+                raise ValueError(f"待机图必须是 {profile.dimensions} 非渐进 JPEG")
             im.verify()
 
 
@@ -152,16 +157,27 @@ def encode_reports(op, payload=b""):
 
 
 class LG700:
-    def __init__(self):
+    """Legacy class name retained; a profile selects each supported model."""
+    def __init__(self, profile=None, expected_identity=None):
         import hid
         self.hid = None
         self._mutex = None
         self._kernel = None
-        devices = [d for d in hid.enumerate(VID, PID)
-                   if d.get("interface_number") == 0 and d.get("usage_page") == 0xFF06]
+        requested = resolve_profile(profile) if profile is not None else None
+        devices = []
+        for candidate in PROFILES:
+            if requested is not None and candidate != requested:
+                continue
+            devices.extend(d for d in hid.enumerate(candidate.vid, candidate.pid)
+                           if is_command_interface(d))
+        devices = list({connection_identity(d): d for d in devices}.values())
         if len(devices) != 1:
-            raise RuntimeError(f"需要恰好一台 LG700，检测到 {len(devices)} 台")
+            raise RuntimeError(f"需要恰好一台目标屏幕，检测到 {len(devices)} 台；"
+                               "可选择型号后重新识别，或仅连接一台 LG700 / LG600 / LX800")
         self.info = devices[0]
+        self._profile = profile_for_info(self.info)
+        if expected_identity is not None and connection_identity(self.info) != expected_identity:
+            raise RuntimeError('转换期间目标设备已变化，请重新识别后再写入')
         try:
             if os.name == 'nt':
                 import ctypes
@@ -192,6 +208,14 @@ class LG700:
 
     def __exit__(self, *args):
         self.close()
+
+    @property
+    def profile(self):
+        return getattr(self, '_profile', LG700_PROFILE)
+
+    def require_supported_revision(self):
+        if self.revision not in self.profile.supported_revisions:
+            raise RuntimeError(f'{self.profile.name} 固件 REV {self.revision:04X} 尚未适配，已停止写入或模式修改')
 
     def close(self):
         try:
@@ -301,9 +325,10 @@ class LG700:
             self.hid = None
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            matches = [d for d in hid.enumerate(VID, PID)
-                       if d.get('interface_number') == 0 and d.get('usage_page') == 0xFF06
-                       and d.get('serial_number') == expected_serial]
+            matches = [d for d in hid.enumerate(self.profile.vid, self.profile.pid)
+                       if is_command_interface(d)
+                       and ((expected_serial and d.get('serial_number') == expected_serial)
+                            or (not expected_serial and d.get('path') == self.info.get('path')))]
             if len(matches) == 1:
                 try:
                     self.hid = open_command_transport(matches[0]['path'])
@@ -324,19 +349,18 @@ class LG700:
 
         V75: 0x1E writes config[0x111], starts the boot task for mode 1,
         and schedules configuration persistence. The protocol has no getter
-        for this byte: an ACK proves command acceptance, not visible playback.
+        for this byte, and this command has no acknowledgement.
         """
-        if self.revision not in SUPPORTED_REVISIONS:
-            raise RuntimeError(f'固件 REV {self.revision:04X} 尚未验证离线播放接口')
+        self.require_supported_revision()
         directory = Path(backup_directory)
         manifest = json.loads((directory / 'manifest.json').read_text(encoding='utf8'))
-        if manifest['device'].get('revision') != f'{self.revision:04X}':
-            raise ValueError('播放模式备份固件版本不匹配')
+        check_manifest_device(manifest, self.profile, revision=self.revision,
+                              info=getattr(self, 'info', None))
         for name in ('boot', 'standby'):
             saved = manifest['assets'][name]
             if sha256((directory / saved['file']).read_bytes()) != saved['sha256']:
                 raise ValueError('设置播放模式前，素材备份 SHA-256 校验失败')
-        audit = {'revision': f'{self.revision:04X}', 'command': '0x1E',
+        audit = {'model': self.profile.key, 'revision': f'{self.revision:04X}', 'command': '0x1E',
                  'mode': 1 if enabled else 0, 'previous_mode': None,
                  'mode_readback_supported': False, 'acknowledged': False,
                  'ack_expected': False, 'send_completed': False,
@@ -378,11 +402,11 @@ class LG700:
     def metadata(self, selector):
         raw = self.query(0x0C, struct.pack("<II", selector, 0))
         sel, size, active, next_record, extra = struct.unpack_from("<IiIII", raw)
-        if sel != selector or not 0 < size <= capacity(selector):
+        if sel != selector or not 0 < size <= capacity(selector, self.profile):
             raise OSError(f"素材元数据异常：selector={sel}, size={size}")
-        begin, end = REGIONS[selector]
+        begin, end = self.profile.regions[selector]
         if active < begin or active >= end or not active < next_record <= end:
-            raise OSError("素材地址与已知 LG700 存储布局不符，已停止")
+            raise OSError(f"素材地址与已知 {self.profile.name} 存储布局不符，已停止")
         return dict(selector=sel, size=size, active_record=active,
                     next_record=next_record, extra=extra)
 
@@ -414,11 +438,13 @@ class LG700:
     def backup(self, directory, progress=lambda s, p: None):
         directory = Path(directory)
         directory.mkdir(parents=True, exist_ok=False)
-        manifest = {"device": {"vid": "1A2C", "pid": "151C",
+        manifest = {"device": {"vid": f'{self.profile.vid:04X}', "pid": f'{self.profile.pid:04X}',
+                    "model": self.profile.key, "size": list(self.profile.size),
+                    "device_key": backup_device_key(self.info, self.profile),
                     "revision": f"{self.revision:04X}"}, "assets": {}}
         for selector, name in [(1, "boot"), (0, "standby")]:
             data, meta = self.read_asset(selector, lambda p: progress(name, p))
-            validate_asset(selector, data)
+            validate_asset(selector, data, profile=self.profile)
             file = directory / f"{name}.bin"
             file.write_bytes(data)
             # Verify the persisted backup before exposing it to the write operation.
@@ -434,13 +460,12 @@ class LG700:
         """Only call after backup(); commit is sent exactly once, no blind retries."""
         self.last_write_skipped = False
         self.last_verification_reconnected = False
-        validate_asset(selector, data)
-        if self.revision not in SUPPORTED_REVISIONS:
-            raise RuntimeError(f"写入尚未验证的固件 REV {self.revision:04X}，已停止")
+        validate_asset(selector, data, profile=self.profile)
+        self.require_supported_revision()
         directory = Path(backup_directory)
         manifest = json.loads((directory / "manifest.json").read_text(encoding="utf8"))
-        if manifest["device"].get("revision") != f"{self.revision:04X}":
-            raise ValueError("备份固件版本不匹配")
+        check_manifest_device(manifest, self.profile, revision=self.revision,
+                              info=getattr(self, 'info', None))
         asset_name = "boot" if selector else "standby"
         saved = manifest["assets"][asset_name]
         previous = (directory / saved["file"]).read_bytes()
@@ -507,13 +532,15 @@ class LG700:
         return data
 
 
-def restore_file(directory, selector):
+def restore_file(directory, selector, *, profile=None):
     directory = Path(directory)
     manifest = json.loads((directory / "manifest.json").read_text(encoding="utf8"))
+    selected = manifest_profile(manifest) if profile is None else resolve_profile(profile)
+    check_manifest_device(manifest, selected)
     name = "boot" if selector else "standby"
     record = manifest["assets"][name]
     data = (directory / record["file"]).read_bytes()
     if sha256(data) != record["sha256"]:
         raise ValueError("恢复文件 SHA-256 校验失败")
-    validate_asset(selector, data)
+    validate_asset(selector, data, profile=selected)
     return data

@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 from sample_assets import sample_boot
 from lg700_core import unpack_boot
 from lg700_tool import App
+from device_profiles import LG700_PROFILE
 
 
 class WriteIdleGuardTests(unittest.TestCase):
@@ -27,6 +28,9 @@ class WriteIdleGuardTests(unittest.TestCase):
             return 'verified-sha256'
         device.write_asset.side_effect=write
         app=Mock()
+        app.target_profile.return_value=LG700_PROFILE
+        app.device_identity=None
+        app.vendor_session.return_value=nullcontext()
         app.enable_offline.side_effect=lambda device,directory:device.set_offline_loop(True,directory)
         with patch('lg700_tool.pause_vendor',return_value=nullcontext()), \
              patch('lg700_tool.time.sleep'), \

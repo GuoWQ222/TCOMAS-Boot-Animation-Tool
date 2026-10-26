@@ -1,6 +1,7 @@
 """A delayed, screen-bounded help bubble for a small question-mark icon."""
 import tkinter as tk
 from tkinter import ttk
+from ui_theme import theme_font
 
 
 class HoverHelp:
@@ -28,8 +29,8 @@ class HoverHelp:
         popup.overrideredirect(True)
         popup.attributes('-topmost', True)
         tk.Label(popup, text=self.text, justify='left', wraplength=340,
-            font=('Microsoft YaHei UI', 10), background='#fffde8', foreground='#202020',
-            relief='solid', borderwidth=1, padx=10, pady=8).pack()
+            font=theme_font(self.widget, 10), background='#fcfbff', foreground='#626780',
+            relief='solid', borderwidth=1, padx=14, pady=12).pack()
         popup.update_idletasks()
         x = self.widget.winfo_rootx() + self.widget.winfo_width() + 6
         y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
@@ -54,10 +55,21 @@ class HoverHelp:
             self.window = None
 
 
+class QuestionIcon(tk.Canvas):
+    def __init__(self, parent):
+        super().__init__(parent, width=22, height=22, highlightthickness=0,
+            background=ttk.Style(parent).lookup('TFrame', 'background'), cursor='question_arrow')
+
+    def apply_scale(self, scale):
+        self.configure(width=round(22 * scale), height=round(22 * scale))
+        self.delete('all')
+        self.create_oval(2 * scale, 2 * scale, 20 * scale, 20 * scale, fill='#eeedfc', outline='#eeedfc')
+        self.create_text(11 * scale, 11 * scale, text='?', fill='#8581d3',
+                         font=theme_font(self, 10, 'bold', family='Segoe UI'))
+
+
 def question_icon(parent, text):
-    icon = tk.Canvas(parent, width=22, height=22, highlightthickness=0,
-        background=ttk.Style(parent).lookup('TFrame', 'background'), cursor='question_arrow')
-    icon.create_oval(2, 2, 20, 20, fill='#16a34a', outline='#16a34a')
-    icon.create_text(11, 11, text='?', fill='white', font=('Segoe UI', 11, 'bold'))
+    icon = QuestionIcon(parent)
+    icon.apply_scale(getattr(icon.winfo_toplevel(), '_ui_scale', 1))
     icon.hover_help = HoverHelp(icon, text)
     return icon

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>两条控制链路，一块水冷屏幕 · TCOMAS 流程图</title>
+<style>
+:root{--ink:#29324b;--muted:#67718a;--page:#f4f5fb;--line:#e5e8f3;--blue:#367bc9;--blue-soft:#edf5ff;--purple:#8064ce;--purple-soft:#f4f0ff;--green:#168779;--orange:#ae6521;--radius:22px}
+*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font-family:"Microsoft YaHei UI","PingFang SC",system-ui,sans-serif;line-height:1.65}button{font:inherit;color:inherit;cursor:pointer}button:focus-visible,summary:focus-visible,a:focus-visible{outline:3px solid #9c8fe7;outline-offset:4px}button{touch-action:manipulation}main{max-width:1260px;padding:34px 30px 42px;margin:auto}h1,h2,h3,p{margin:0}h1{font-size:clamp(28px,3.3vw,42px);line-height:1.3;letter-spacing:-1px;font-weight:750}h2{font-size:23px;line-height:1.4}h3{font-size:17px}code{font:13px/1.5 Consolas,monospace;background:#edf0f7;padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}.eyebrow{font-size:12px;font-weight:700;letter-spacing:2px;color:#727c9d}.hero{padding:30px 34px;background:linear-gradient(115deg,#dfeeff 0%,#ebe6ff 57%,#fce5f0 100%);border-radius:26px;position:relative;overflow:hidden}.hero h1{margin:11px 0 13px}.hero p{max-width:850px;font-size:16px;color:#57627c}.hero .topline{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.tag{font-size:12px;padding:4px 11px;border-radius:20px;background:#ffffffa8;color:#64708c}.quick-compare{display:flex;gap:28px;margin-top:23px;flex-wrap:wrap}.quick-compare span{font-size:14px;display:flex;align-items:center;gap:9px}.dot{height:9px;width:9px;border-radius:50%;display:inline-block;background:var(--blue);flex:none}.dot.purple{background:var(--purple)}.section-top{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:28px 2px 17px}.section-top p{font-size:13px;color:var(--muted)}.flow-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.lane{background:white;border:1px solid var(--line);border-radius:var(--radius);padding:24px;min-width:0;--accent:var(--blue);--soft:var(--blue-soft)}.lane.tool{--accent:var(--purple);--soft:var(--purple-soft)}.lane-head{display:grid;grid-template-columns:44px 1fr;gap:13px;align-items:center;margin-bottom:19px}.lane-mark{display:grid;place-items:center;width:44px;height:44px;border-radius:14px;color:var(--accent);background:var(--soft);font-size:19px;font-weight:700}.lane-head h2{font-size:22px}.lane-head p{font-size:13px;color:var(--muted);margin-top:1px}.lane-summary{display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--line);padding-top:13px;margin-top:18px;font-size:13px}.lane-summary strong{color:var(--accent);font-weight:650}.node-list{list-style:none;padding:0;margin:0}.node-list li{position:relative}.node-list li+li{padding-top:18px}.node-list li+li:before{content:"";position:absolute;width:2px;height:13px;background:#cfd6e5;top:1px;left:29px}.node-list li+li:after{content:"";position:absolute;top:10px;left:26px;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid #c1cadc}.node{width:100%;display:grid;grid-template-columns:35px 1fr;gap:12px;align-items:center;text-align:left;background:#fafbfe;border:1px solid #e9edf5;border-radius:14px;padding:12px 15px;min-height:86px;transition:background .18s,border-color .18s,box-shadow .18s}.node:hover{background:var(--soft);border-color:#d3dcf1}.node[aria-pressed="true"]{background:var(--soft);border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 10%,transparent)}.number{width:30px;height:30px;display:grid;place-items:center;border-radius:50%;background:white;color:var(--accent);font-size:13px;font-weight:750;border:1px solid #e5eaf4}.node-main{min-width:0}.node-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.node-top strong{font-size:16px;font-weight:650}.owner{font-size:11px;white-space:nowrap;color:var(--muted)}.node p{color:#69738a;font-size:13px;margin-top:3px}.node .loop{color:var(--accent)}.node.store{background:var(--soft)}.detail{margin-top:16px;padding:17px 21px;display:grid;grid-template-columns:190px 1fr;gap:20px;background:#fff;border:1px solid var(--line);border-radius:16px;min-height:116px}.detail .caption{font-size:11px;color:var(--muted);letter-spacing:1.4px}.detail h3{margin-top:3px;color:var(--blue);font-size:17px}.detail p{font-size:14px;color:#5c677f}.detail code{display:inline-block;margin-top:7px}.merge{height:51px;position:relative;margin:0 24%}.merge:before{content:"";position:absolute;left:0;right:0;height:23px;border:2px solid #cfd3e4;border-top:0;border-radius:0 0 14px 14px;top:0}.merge:after{content:"";position:absolute;top:24px;left:50%;height:22px;width:2px;background:#cfd3e4}.merge .arrow{position:absolute;left:calc(50% - 4px);top:43px;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #c1c8dc}.sim{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:25px 28px}.sim-head{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}.sim-head p{font-size:13px;color:var(--muted);margin-top:4px}.controls{display:flex;flex-wrap:wrap;gap:7px;margin-top:20px}.state-btn{background:#f3f4fa;border:1px solid transparent;border-radius:10px;min-height:40px;padding:7px 14px;font-size:13px;color:#66728c}.state-btn[aria-pressed="true"]{background:#343d59;color:#fff}.sim-body{display:grid;grid-template-columns:1fr 100px 1.25fr;align-items:center;gap:18px;margin-top:25px}.sources{display:grid;gap:15px}.source{padding:15px 17px;background:#f8f9fd;border-radius:14px;border:1px solid #eceff6;opacity:.6;transition:opacity .2s,background .2s}.source.active{opacity:1;background:var(--blue-soft);border-color:#dce9f9}.source.memory.active{background:var(--purple-soft);border-color:#e6def6}.source-top{display:flex;justify-content:space-between;align-items:center;gap:10px}.source h3{font-size:15px}.source p{font-size:12px;color:#69758c;margin-top:4px}.source .status{font-size:11px;white-space:nowrap}.source .blue{color:var(--blue)}.source .purple{color:var(--purple)}.routes{align-self:stretch;position:relative;min-height:164px}.routes svg{display:block;width:100%;height:100%;position:absolute;inset:0;overflow:visible}.route{fill:none;stroke:#dde2ed;stroke-width:2}.route.active-blue{stroke:var(--blue);stroke-width:3}.route.active-purple{stroke:var(--purple);stroke-width:3}.route.sleeping{stroke:var(--purple);stroke-dasharray:5 5;opacity:.35}.route-label{font-size:11px;fill:var(--muted)}.display-wrap{display:flex;align-items:center;gap:21px;min-width:0}.display{background:#283149;padding:9px;border-radius:15px;box-shadow:0 6px 16px #25364b13;width:218px;flex-shrink:0}.screen{height:143px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border-radius:9px;position:relative;overflow:hidden;color:#eff7ff;background:linear-gradient(140deg,#376899,#548fab 60%,#81c6c5)}.screen:before{content:"";height:140px;width:140px;border:1px solid #ffffff55;border-radius:50%;position:absolute;right:-33px;top:-66px}.screen:after{content:"";height:100px;width:100px;border:1px solid #ffffff36;border-radius:50%;position:absolute;left:-46px;bottom:-49px}.screen .screen-eyebrow{font-size:10px;letter-spacing:2px;opacity:.8}.screen strong{font-size:22px;margin:8px 0 3px;font-weight:650}.screen .screen-sub{font-size:11px;opacity:.85}.display.offline .screen{background:linear-gradient(140deg,#7b67b1,#ab88b5 65%,#dca6be)}.display.off .screen{background:#151d2d;color:#8390a7}.display.off .screen:before,.display.off .screen:after{display:none}.display-caption{font-size:11px;text-align:center;color:var(--muted);margin-top:10px}.storage-badge{font-size:11px;color:var(--green);display:inline-flex;align-items:center;gap:6px;margin-top:5px}.storage-badge:before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor}.result{min-width:0}.result .result-label{font-size:11px;color:#7c86a1;letter-spacing:1px}.result strong{display:block;font-size:17px;margin:3px 0 7px}.result p{font-size:13px;color:#647088}.takeaway{display:flex;gap:10px;margin-top:23px;padding:15px 18px;border-radius:12px;background:#fff6ed;color:#90602d;font-size:13px}.takeaway .tip-icon{width:22px;height:22px;border-radius:50%;background:#f5e5d3;display:grid;place-items:center;flex-shrink:0;font-size:12px;font-weight:750}.bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px}.explain{padding:22px 25px;border-radius:18px;background:#fff;border:1px solid var(--line)}.explain h3{margin-bottom:9px}.explain p{font-size:14px;color:#66718a}.explain strong{color:#3e4862;font-weight:650}.tech{margin-top:24px;background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden}.tech summary{cursor:pointer;min-height:54px;padding:17px 24px;font-size:14px;font-weight:650}.tech-body{padding:0 24px 24px}.tech-body p{font-size:13px;color:var(--muted);margin-top:13px}.tech table{width:100%;border-collapse:collapse;text-align:left;font-size:13px}.tech th,.tech td{padding:11px 12px;border-bottom:1px solid #edf0f6;vertical-align:top}.tech th{background:#f7f8fc;font-weight:650}.tech th:first-child{width:24%}.footer{font-size:11px;color:#828aa0;margin:24px 3px 0;display:flex;justify-content:space-between;align-items:flex-start;gap:20px}.footer p{max-width:850px}.nojs{padding:12px;background:#fff1df;margin:12px 0;border-radius:10px}.nojs p{font-size:13px}.sr-only{position:absolute;clip:rect(0,0,0,0);width:1px;height:1px;overflow:hidden;white-space:nowrap}
+@media(min-width:1500px){main{max-width:1390px}.node{min-height:90px}.node-top strong{font-size:17px}.node p{font-size:14px}}
+@media(max-width:1050px){.sim-body{grid-template-columns:1fr 70px 1.1fr;gap:10px}.display-wrap{flex-direction:column;gap:16px;align-items:flex-start}.display{width:100%;max-width:270px}.result{width:100%}.routes{min-height:230px}.sim{padding:24px}.detail{grid-template-columns:160px 1fr}}
+@media(max-width:720px){main{padding:17px 15px 28px}.hero{padding:24px}.hero p{font-size:14px}.quick-compare{gap:10px;margin-top:18px;flex-direction:column}.section-top{align-items:flex-start;flex-direction:column;gap:5px}.section-top h2{font-size:22px}.flow-grid{grid-template-columns:1fr;gap:18px}.lane{padding:20px}.lane-head h2{font-size:21px}.node{min-height:83px;padding:12px}.node-top strong{font-size:15px}.node p{font-size:13px}.detail{grid-template-columns:1fr;gap:9px;padding:18px}.merge{display:none}.sim{margin-top:22px;padding:21px}.sim-head h2{font-size:20px}.controls{gap:6px}.state-btn{font-size:12px;padding:8px 10px;min-height:42px}.sim-body{grid-template-columns:1fr;margin-top:20px;gap:20px}.sources{grid-template-columns:1fr 1fr;gap:10px}.source{padding:12px}.source-top{align-items:flex-start;flex-direction:column;gap:4px}.source h3{font-size:13px}.source p{font-size:12px}.routes{display:none}.display-wrap{flex-direction:row;align-items:center;gap:16px}.display{width:45%;min-width:120px;max-width:200px}.screen{height:120px}.screen strong{font-size:17px}.screen .screen-eyebrow{font-size:9px}.screen .screen-sub{font-size:10px}.result{flex:1}.result strong{font-size:15px}.result p{font-size:12px}.takeaway{padding:13px;font-size:12px}.bottom-grid{grid-template-columns:1fr;gap:14px}.explain{padding:20px}.footer{flex-direction:column;gap:9px}.tech-body{padding:0 12px 18px}.tech th,.tech td{padding:9px 7px;font-size:12px}}
+@media(max-width:380px){.node-top{flex-wrap:wrap;gap:1px}.node .owner{font-size:10px}.display-wrap{flex-direction:column;align-items:center}.display{width:100%;max-width:240px}.result{width:100%}.hero{padding:21px}.hero .eyebrow{font-size:10px}.hero h1{font-size:27px}.lane-summary{font-size:12px}.source h3{font-size:12px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+@media print{@page{size:A4 portrait;margin:12mm}body{background:#fff}main{padding:0;max-width:none}.hero{padding:18px 22px}.hero h1{font-size:26px}.section-top{margin-top:18px}.flow-grid{grid-template-columns:1fr 1fr;gap:12px}.lane{padding:13px;break-inside:avoid}.lane-head{margin-bottom:12px}.lane-head h2{font-size:17px}.lane-head p{font-size:10px}.node{padding:8px 10px;min-height:66px}.node-top strong{font-size:13px}.node p{font-size:11px}.owner{font-size:9px}.node-list li+li{padding-top:13px}.detail{display:none}.merge{height:28px}.sim{break-inside:avoid;padding:18px}.controls{display:none}.sim-body{grid-template-columns:1fr 55px 1.2fr}.display-wrap{flex-direction:column;gap:8px}.screen{height:110px}.display{width:180px}.bottom-grid{gap:12px}.tech{break-inside:avoid}.footer{font-size:9px}.node[aria-pressed="true"]{box-shadow:none}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head>
+<body>
+<main id="control-explainer">
+  <header class="hero">
+    <div class="topline"><span class="eyebrow">TCOMAS / SCREEN CONTROL</span><span class="tag">LG700 控制原理 · 离线可用</span></div>
+    <h1>两条控制链路，<br>一块水冷屏幕。</h1>
+    <p>官方软件把电脑上的画面持续传给屏幕；本工具把素材保存进屏幕，再交给固件独立播放。它们最终控制的是同一块显示面板。</p>
+    <div class="quick-compare"><span><i class="dot" aria-hidden="true"></i>官方软件：持续实时传屏</span><span><i class="dot purple" aria-hidden="true"></i>本工具：一次保存，固件独立播放</span></div>
+  </header>
+  <noscript><div class="nojs"><p>流程图和说明可直接阅读。启用 JavaScript 后可点击节点、切换下方状态演示。</p></div></noscript>
+  <section aria-labelledby="flows-title">
+    <div class="section-top"><h2 id="flows-title">画面是怎样到达屏幕的？</h2><p>沿箭头向下阅读 · 点击任意节点查看详细说明</p></div>
+    <div class="flow-grid">
+      <article class="lane official" aria-labelledby="official-title">
+        <div class="lane-head"><div class="lane-mark" aria-hidden="true">A</div><div><h2 id="official-title">官方钛钽软件</h2><p>电脑持续参与的实时显示流程</p></div></div>
+        <ol class="node-list">
+          <li><button class="node" type="button" data-node="o1" aria-pressed="false"><span class="number">01</span><span class="node-main"><span class="node-top"><strong>选择图片、视频或主题</strong><span class="owner">电脑端</span></span><p>完整素材保存在电脑上</p></span></button></li>
+          <li><button class="node" type="button" data-node="o2" aria-pressed="false"><span class="number">02</span><span class="node-main"><span class="node-top"><strong>解码、缩放与合成画面</strong><span class="owner">电脑端</span></span><p>可叠加温度、频率等实时信息</p></span></button></li>
+          <li><button class="node" type="button" data-node="o3" aria-pressed="false"><span class="number">03</span><span class="node-main"><span class="node-top"><strong>把当前画面压缩为 JPEG</strong><span class="owner">电脑端</span></span><p>准备这一帧需要发送的数据</p></span></button></li>
+          <li><button class="node" type="button" data-node="o4" aria-pressed="true"><span class="number">04</span><span class="node-main"><span class="node-top"><strong>通过 USB 实时传帧</strong><span class="owner">实时通道</span></span><p>MI_01 · 0x08 · 持续发送</p></span></button></li>
+          <li><button class="node" type="button" data-node="o5" aria-pressed="false"><span class="number">05</span><span class="node-main"><span class="node-top"><strong>屏幕接收并解码当前帧</strong><span class="owner">屏幕端</span></span><p>用于当前画面显示</p></span></button></li>
+          <li><button class="node" type="button" data-node="o6" aria-pressed="false"><span class="number">06</span><span class="node-main"><span class="node-top"><strong>显示这一帧画面</strong><span class="owner">显示面板</span></span><p>新素材首帧到达，即可切换画面</p></span></button></li>
+          <li><button class="node" type="button" data-node="o7" aria-pressed="false"><span class="number">↺</span><span class="node-main"><span class="node-top"><strong>电脑继续准备后续画面</strong><span class="owner">持续循环</span></span><p class="loop">回到第 02 步，或重复发送当前帧</p></span></button></li>
+        </ol>
+        <div class="lane-summary"><span>显示所需条件</span><strong>当前帧送达屏幕</strong></div>
+      </article>
+      <article class="lane tool" aria-labelledby="tool-title">
+        <div class="lane-head"><div class="lane-mark" aria-hidden="true">B</div><div><h2 id="tool-title">开机动画工具</h2><p>素材保存完成后，由屏幕独立播放</p></div></div>
+        <ol class="node-list">
+          <li><button class="node" type="button" data-node="t1" aria-pressed="false"><span class="number">01</span><span class="node-main"><span class="node-top"><strong>CPU 转码并打包动画</strong><span class="owner">电脑端</span></span><p>视频 → JPEG 帧序列 → 原生动画包</p></span></button></li>
+          <li><button class="node" type="button" data-node="t2" aria-pressed="false"><span class="number">02</span><span class="node-main"><span class="node-top"><strong>完整备份并核验旧素材</strong><span class="owner">读取设备</span></span><p>保留旧动画与待机图，准备维护</p></span></button></li>
+          <li><button class="node" type="button" data-node="t3" aria-pressed="false"><span class="number">03</span><span class="node-main"><span class="node-top"><strong>进入维护模式，暂停离线循环</strong><span class="owner">屏幕端</span></span><p>模式 0 · 在维护状态下完成素材操作</p></span></button></li>
+          <li><button class="node store" type="button" data-node="t4" aria-pressed="false"><span class="number">04</span><span class="node-main"><span class="node-top"><strong>写入整段动画并完整读回</strong><span class="owner">内置存储</span></span><p>分块发送 → 设备确认 → 提交 → 比较</p></span></button></li>
+          <li><button class="node store" type="button" data-node="t5" aria-pressed="false"><span class="number">05</span><span class="node-main"><span class="node-top"><strong>写入待机首帧并读回复核</strong><span class="owner">内置存储</span></span><p>完整校验，等待提交后再次检查首帧</p></span></button></li>
+          <li><button class="node" type="button" data-node="t6" aria-pressed="false"><span class="number">06</span><span class="node-main"><span class="node-top"><strong>启用固件离线循环</strong><span class="owner">屏幕端</span></span><p>全部写入和校验通过后，设置模式 1</p></span></button></li>
+          <li><button class="node" type="button" data-node="t7" aria-pressed="false"><span class="number">↺</span><span class="node-main"><span class="node-top"><strong>固件读取素材并循环播放</strong><span class="owner">屏幕自行播放</span></span><p class="loop">读取内置存储，播放结束后回到首帧</p></span></button></li>
+        </ol>
+        <div class="lane-summary"><span>保存完成条件</span><strong>整段写入、提交并校验通过</strong></div>
+      </article>
+    </div>
+    <div class="detail" id="node-detail" aria-live="polite"><div><span class="caption">选中节点 · 官方流程 04</span><h3>通过 USB 实时传帧</h3></div><div><p>官方软件持续发送当前 JPEG 帧。新画面的首帧到达后即可显示，后续帧继续传输；这条链路承担在线显示。</p><code>MI_01 · 命令 0x08 · 每报告约 1,020 字节有效内容</code></div></div>
+  </section>
+  <div class="merge" aria-hidden="true"><span class="arrow"></span></div>
+  <section class="sim" aria-labelledby="sim-title">
+    <div class="sim-head"><div><h2 id="sim-title">两条路径，汇到同一块显示面板</h2><p>切换状态，查看“当前画面”和“已保存素材”的区别。</p></div><span class="tag" style="background:#f2f3fa">原理示意 · 不连接设备</span></div>
+    <div class="controls" role="group" aria-label="选择屏幕工作状态">
+      <button class="state-btn" type="button" data-mode="official" aria-pressed="false">官方传屏</button>
+      <button class="state-btn" type="button" data-mode="offline" aria-pressed="false">离线播放</button>
+      <button class="state-btn" type="button" data-mode="both" aria-pressed="true">两者同时运行</button>
+      <button class="state-btn" type="button" data-mode="off" aria-pressed="false">屏幕完全断电</button>
+    </div>
+    <div class="sim-body">
+      <div class="sources">
+        <div class="source active" id="computer-source"><div class="source-top"><h3>电脑 · 官方软件</h3><span class="status blue" id="computer-status">正在实时传帧</span></div><p>当前 JPEG 画面 → USB → 屏幕</p></div>
+        <div class="source memory" id="memory-source"><div class="source-top"><h3>屏幕 · 内置存储</h3><span class="status purple" id="memory-status">素材已保存</span></div><p>自定义动画包 → 固件逐帧读取</p></div>
+      </div>
+      <div class="routes" aria-hidden="true"><svg viewBox="0 0 100 190" preserveAspectRatio="none"><defs><marker id="tip-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#367bc9"/></marker><marker id="tip-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#8064ce"/></marker></defs><path class="route active-blue" id="computer-route" d="M0 43 C45 43 42 93 96 93" marker-end="url(#tip-blue)"/><path class="route sleeping" id="memory-route" d="M0 147 C45 147 42 104 96 104"/></svg></div>
+      <div class="display-wrap">
+        <div><div class="display" id="display"><div class="screen"><span class="screen-eyebrow" id="screen-kind">LIVE STREAM</span><strong id="screen-title">官方实时画面</strong><span class="screen-sub" id="screen-sub">画面由电脑持续提供</span></div></div><div class="display-caption">同一块水冷显示面板<br><span class="storage-badge">内置素材仍然保留</span></div></div>
+        <div class="result" aria-live="polite"><span class="result-label">当前状态</span><strong id="result-title">官方传屏接管可见画面</strong><p id="result-text">对应你观察到的 LG700 现象：打开官方软件后，显示切回官方画面。此前写入的自定义动画仍保存在屏幕中。</p></div>
+      </div>
+    </div>
+    <div class="takeaway"><span class="tip-icon" aria-hidden="true">!</span><p><strong>建议完全退出官方软件，包括托盘进程，并关闭其开机自启动。</strong><br>这样可避免进入 Windows 后，官方实时传屏重新接管当前显示。</p></div>
+  </section>
+  <div class="bottom-grid">
+    <section class="explain"><h3>为什么官方能很快切换画面？</h3><p>官方只需把<strong>新素材的首帧</strong>送到屏幕，后续帧继续发送。本工具要完成<strong>整段素材的备份、写入、提交和完整读回</strong>，完成条件与数据量都不同。</p></section>
+    <section class="explain"><h3>“永久保存”与“始终显示”有什么区别？</h3><p>永久保存指<strong>断电后素材仍保留</strong>。当前画面仍可能被官方传屏接管；屏幕完全断电时也无法显示。有供电并处于离线播放状态时，固件可独立播放。</p></section>
+  </div>
+  <details class="tech" id="technical-details"><summary>查看协议、写入顺序与验证范围</summary><div class="tech-body">
+    <table><caption class="sr-only">官方实时通道与工具素材保存通道的协议对照</caption><thead><tr><th scope="col">项目</th><th scope="col">官方实时传屏</th><th scope="col">本工具永久素材写入</th></tr></thead><tbody>
+      <tr><th scope="row">USB 接口</th><td><code>MI_01</code> 数据接口</td><td><code>MI_00</code> 命令接口</td></tr>
+      <tr><th scope="row">主要命令</th><td><code>0x08</code> 发送显示帧</td><td><code>0x0A</code> 开始写入；<code>0x0B</code> 分块写入及最后提交；<code>0x0D</code> 读取素材</td></tr>
+      <tr><th scope="row">每报告有效内容</th><td>约 1,020 字节</td><td>约 436 字节；应用层使用 8 KiB 分块，再拆成多个 HID 报告</td></tr>
+      <tr><th scope="row">动画形式</th><td>电脑持续准备并发送 JPEG 画面</td><td>CPU FFmpeg 将视频转为 JPEG 帧序列，再打包为固件可读取的动画容器</td></tr>
+      <tr><th scope="row">播放模式</th><td>在线实时画面</td><td><code>0x1E + 00</code> 维护时暂停离线循环；全部校验后发送 <code>0x1E + 01</code> 启用循环</td></tr>
+      <tr><th scope="row">写入保护</th><td>日常应用素材走实时传帧链路</td><td>先备份；动画和待机首帧分别写入、分别完整读回；首帧等待提交后再复核，最后才启用循环</td></tr>
+    </tbody></table>
+    <p>流程图展示常规新素材写入。若完整核验发现目标内容已经相同，工具可跳过重复擦写。出现错误时停止后续流程；流程图中的向下箭头表示前一步成功后的路径。</p>
+    <p>当前工具 v1.2.2 在设备会话期间临时暂停官方主进程，结束或异常后恢复。它没有后台持续抢占显示的功能。离线循环模式也没有将屏幕锁定为独占状态。</p>
+    <p>“官方驱动”在这里主要指官方控制软件；底层 USB 通信使用 Windows 自带的 HID 驱动。日常“应用图片／视频”的实时通道中，目前未发现将整段素材快速提交到永久动画区的步骤。</p>
+    <p>依据：已提取的官方 T’OWEI 2.1.33 程序、LG700 固件分析，以及本工具本地 v1.2.2 源码。状态演示依据已观察到的 LG700 行为，未完整还原固件内部的接管与超时策略。LG600／LX800 仅有固件仿真和离线验证，尚无实机确认。</p>
+  </div></details>
+  <footer class="footer"><p>本文是控制原理说明，交互仅为本地示意。页面无需联网，也不会读写水冷、操作官方进程或修改自启动设置。</p><span>2026.10.26 · TCOMAS</span></footer>
+</main>
+<script>
+(() => {
+  'use strict';
+  const root = document.getElementById('control-explainer');
+  const details = {
+    o1: ['官方流程 01','选择图片、视频或主题','完整素材保留在电脑上。官方软件根据用户选择，更新现有画面处理管线使用的素材路径或配置。','素材位置：电脑本地文件'],
+    o2: ['官方流程 02','解码、缩放与合成画面','电脑读取视频并解码，按屏幕尺寸缩放，再合成温度、频率等叠加内容。随后为当前时刻生成要显示的画面。','电脑持续参与画面生成'],
+    o3: ['官方流程 03','把当前画面压缩为 JPEG','官方原生模块包含视频解码和 JPEG 压缩能力。每次发送的是当前 JPEG 帧，后续画面继续由电脑处理。','电脑解码／渲染 → JPEG 压缩'],
+    o4: ['官方流程 04','通过 USB 实时传帧','官方软件持续发送当前 JPEG 帧。新画面的首帧到达后即可显示，后续帧继续传输；这条链路承担在线显示。','MI_01 · 命令 0x08 · 每报告约 1,020 字节有效内容'],
+    o5: ['官方流程 05','屏幕接收并解码当前帧','屏幕控制器接收分包的数据，并把 JPEG 画面用于显示。已分析的这条实时命令路径，没有显示出将整段视频提交到永久开机动画区的步骤。','实时显示数据与永久素材记录是两条路径'],
+    o6: ['官方流程 06','显示这一帧画面','屏幕显示收到的画面。官方切换素材时，新素材的首帧到达就能改变可见画面，因此不必等待整段视频完成永久保存。','首帧送达即可改变显示'],
+    o7: ['官方流程 07','电脑持续提供后续画面','视频随素材推进，电脑继续解码、渲染和传帧；静态画面也可能重复发送。发送频率与不同画面的实际更新帧率不是同一个指标。','回到第 02 步 · 持续传送下一帧或当前帧'],
+    t1: ['工具流程 01','CPU 转码并打包动画','视频先由 CPU FFmpeg 转为 30 FPS 的 JPEG 帧序列，再生成原生动画包并检查容量。LG700 编码为 640×480；LG600／LX800 为 480×480。','视频 → JPEG 帧序列 → 固件动画容器'],
+    t2: ['工具流程 02','完整备份并核验旧素材','进入设备会话时临时暂停官方主进程，完整读取并备份现有开机动画和待机图。备份与核验成功后才继续后面的素材写入。','读取旧素材 → 保存备份 → 核验备份'],
+    t3: ['工具流程 03','进入维护模式','备份核验完成后发送模式 0，让固件暂停离线循环，在维护状态中完成新素材写入及完整读回。设备会话结束后会恢复被临时暂停的官方进程。','0x1E + 00 · 暂停离线循环'],
+    t4: ['工具流程 04','写入整段动画并完整读回','动画包通过命令接口分块写入，逐块等待设备确认，最后提交素材记录。然后把动画从设备完整读回，与准备写入的数据比较。','selector 1 · 8 KiB 分块 · 写入／确认／提交／读回'],
+    t5: ['工具流程 05','写入待机首帧并复核','把新动画的首帧写入独立的待机图区域，并完整读回比较。当前实现等待 3 秒让记录提交，再读取首帧复核，成功后才进入离线循环。','selector 0 · 写入／完整读回 → 等待提交 → 再次复核'],
+    t6: ['工具流程 06','启用固件离线循环','动画与待机首帧均校验通过后，发送模式 1 启用固件循环播放。该模式命令本身没有同名 ACK；后续通信检查不等同于实际画面播放验证。','0x1E + 01 · 启用离线循环'],
+    t7: ['工具流程 07','固件读取素材并循环播放','后续由屏幕固件从内置非易失存储读取 JPEG 帧并循环显示，电脑不必持续提供画面。实际播放节奏由固件决定；屏幕需要供电。','内置存储 → JPEG 帧 → 显示面板 → 循环']
+  };
+  const detailBox = root.querySelector('#node-detail');
+  root.querySelectorAll('[data-node]').forEach(button => {
+    button.addEventListener('click', () => {
+      root.querySelectorAll('[data-node]').forEach(node => node.setAttribute('aria-pressed', String(node === button)));
+      const data = details[button.dataset.node];
+      detailBox.querySelector('.caption').textContent = '选中节点 · ' + data[0];
+      detailBox.querySelector('h3').textContent = data[1];
+      detailBox.querySelector('h3').style.color = button.dataset.node.startsWith('o') ? 'var(--blue)' : 'var(--purple)';
+      detailBox.querySelector('p').textContent = data[2];
+      detailBox.querySelector('code').textContent = data[3];
+    });
+  });
+  const states = {
+    official: {computer:true, memory:false, off:false, kind:'LIVE STREAM', title:'官方实时画面', sub:'画面由电脑持续提供', result:'电脑持续提供当前画面', text:'屏幕正在显示官方软件传来的画面。此前保存的自定义素材仍然保留，当前显示来源是电脑。', pc:'正在实时传帧', mem:'素材已保存'},
+    offline: {computer:false, memory:true, off:false, kind:'OFFLINE PLAYBACK', title:'我的离线动画', sub:'画面来自屏幕内置存储', result:'屏幕固件独立循环播放', text:'官方实时传屏已停止，固件处于离线循环状态。只要屏幕有供电，电脑不必继续提供每一帧。', pc:'实时传屏已停止', mem:'固件正在读取播放'},
+    both: {computer:true, memory:false, off:false, kind:'LIVE STREAM', title:'官方实时画面', sub:'画面由电脑持续提供', result:'官方传屏接管可见画面', text:'对应你观察到的 LG700 现象：打开官方软件后，显示切回官方画面。此前写入的自定义动画仍保存在屏幕中。', pc:'正在实时传帧', mem:'素材保留，当前未显示'},
+    off: {computer:false, memory:false, off:true, kind:'POWER OFF', title:'屏幕已断电', sub:'没有供电，显示停止', result:'显示停止，素材仍保留', text:'完全断电时屏幕无法显示。已保存的素材仍在非易失存储中，有供电并进入离线播放状态后可再次读取。', pc:'没有有效显示链路', mem:'断电后数据仍保留'}
+  };
+  const get = id => root.querySelector('#' + id);
+  root.querySelectorAll('[data-mode]').forEach(button => {
+    button.addEventListener('click', () => {
+      const state = states[button.dataset.mode];
+      root.querySelectorAll('[data-mode]').forEach(control => control.setAttribute('aria-pressed', String(control === button)));
+      get('computer-source').classList.toggle('active', state.computer);
+      get('memory-source').classList.toggle('active', state.memory);
+      get('computer-route').setAttribute('class','route' + (state.computer ? ' active-blue' : ''));
+      get('computer-route').setAttribute('marker-end', state.computer ? 'url(#tip-blue)' : '');
+      get('memory-route').setAttribute('class','route' + (state.memory ? ' active-purple' : (button.dataset.mode === 'both' ? ' sleeping' : '')));
+      get('memory-route').setAttribute('marker-end', state.memory ? 'url(#tip-purple)' : '');
+      get('display').classList.toggle('offline', state.memory);
+      get('display').classList.toggle('off', state.off);
+      get('screen-kind').textContent = state.kind;
+      get('screen-title').textContent = state.title;
+      get('screen-sub').textContent = state.sub;
+      get('result-title').textContent = state.result;
+      get('result-text').textContent = state.text;
+      get('computer-status').textContent = state.pc;
+      get('memory-status').textContent = state.mem;
+    });
+  });
+})();
+</script>
+</body>
+</html>

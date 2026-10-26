@@ -1,0 +1,82 @@
+{
+  "version": "1.2.2",
+  "unit_tests": {
+    "count": 54,
+    "passed": true
+  },
+  "gui": {
+    "version": "1.2.2",
+    "no_USB_access": true,
+    "real_official_software_touched": false,
+    "main_device_detection_mocked": true,
+    "startup_notice": {
+      "read_first": true,
+      "no_process_control_before_read": true,
+      "opens_main_once": true,
+      "minimum_window_text_fits": true
+    },
+    "models": [
+      {
+        "model": "lg700",
+        "shape": "rectangle",
+        "minimum_layout_fits": true,
+        "preview_dimensions": [
+          480,
+          360
+        ]
+      },
+      {
+        "model": "lg600",
+        "shape": "rectangle",
+        "minimum_layout_fits": true,
+        "preview_dimensions": [
+          360,
+          360
+        ]
+      },
+      {
+        "model": "lx800",
+        "shape": "circle",
+        "minimum_layout_fits": true,
+        "preview_dimensions": [
+          360,
+          360
+        ]
+      }
+    ],
+    "responsive": {
+      "larger_controls": true,
+      "larger_preview": true,
+      "reminder_round_trip_keeps_media": true,
+      "maximized": [
+        2560,
+        1369
+      ],
+      "restores_normal_size": true
+    },
+    "controls": {
+      "button_routing": true,
+      "disabled_buttons_do_not_invoke": true,
+      "progress_0_1_50_100": true,
+      "quality_slider": true,
+      "official_stop_feature_removed": true,
+      "help_popup": true
+    }
+  },
+  "html": {
+    "file": "docs/screen-control-flow.html",
+    "nodes": 14,
+    "screen_modes": [
+      "official",
+      "offline",
+      "both",
+      "off"
+    ],
+    "external_dependencies": [],
+    "sha256": "f26dfa2060bb4f19c0b9deed3104e5863db2c775d0d60628f684237fdef944fe",
+    "browser_interactions_checked_before_copy": true
+  },
+  "hardware_access": false,
+  "physical_write_test": false,
+  "LG600_LX800_physical_validation": false
+}
