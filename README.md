@@ -1,9 +1,9 @@
-<h1 align="center">LG700 开机动画工具</h1>
+<h1 align="center">LG700 关机动画工具</h1>
 
 <p align="center">
   把喜欢的图片与视频，留在你的水冷屏幕里。<br>
-  <strong>写入钛坦 LG700 · 进入系统前即可播放</strong><br>
-  <img src="docs/assets/no-vendor-driver.svg" alt="无需钛坦水冷驱动软件常驻" width="284" height="36">
+  <strong>写入钛坦 LG700 · 关机动画</strong><br>
+  <img src="docs/assets/no-vendor-driver.svg" alt="独立运行，不需要安装钛钽水冷驱动软件" width="284" height="36">
 </p>
 
 <p align="center">
@@ -58,9 +58,7 @@
 
 > [!NOTE]
 > 写入耗时参考约 **3 分钟**，实际取决于素材大小、备份和读回过程。请等待操作完成，期间不要断电或拔出设备。
->
-> **v1.0.1** 新增离线写入保护：备份核验后暂停循环，写入和完整读回通过后恢复；操作期间暂时显示静态图是正常现象。27 项离线测试通过，同一份 9.84 MiB 动画已完成一轮实机恢复写入、完整读回及循环播放确认。[查看验证记录](docs/write-idle-guard-validation.md)。
-> **v1.0.5** 修复 REV 0067 在 mode0 待机记录提交后立即切换 mode1 时偶发回退旧图片的问题；增加 3 秒提交等待、复核和 USB 重连后的只读验证。
+
 
 <a id="features"></a>
 
