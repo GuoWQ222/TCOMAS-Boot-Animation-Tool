@@ -3,6 +3,7 @@ import argparse
 import contextlib
 import json
 import logging
+import re
 from logging.handlers import RotatingFileHandler
 import queue
 import sys
@@ -456,7 +457,12 @@ class App:
             while True:
                 event = self.events.get_nowait()
                 if event[0] == "note":
-                    self.status.set(event[1])
+                    status_text = event[1]
+                    if event[2] is not None:
+                        # The dedicated right-hand label owns the percentage.
+                        # Keep the left status line descriptive without showing it twice.
+                        status_text = re.sub(r'[：:]\s*\d+(?:\.\d+)?%$', '', status_text)
+                    self.status.set(status_text)
                     if event[2] is not None:
                         self.progress["value"] = event[2]
                         self.progress_text.set(f'{max(0, min(100, event[2])):.0f}%')
