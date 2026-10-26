@@ -3,7 +3,7 @@
 <p align="center">
   把喜欢的图片与视频，留在你的水冷屏幕里。<br>
   <strong>写入钛坦 LG700 · 关机动画</strong><br>
-  <img src="docs/assets/no-vendor-driver.svg" alt="独立运行，不需要安装钛钽水冷驱动软件" width="384" height="36">
+  <img src="docs/assets/standalone-operation.svg" alt="独立运行，不需要安装钛钽水冷驱动软件" width="384" height="36">
 </p>
 
 <p align="center">
