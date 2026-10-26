@@ -16,7 +16,6 @@ from PIL import Image, ImageTk, ImageDraw
 from lg700_core import LG700, capacity, unpack_boot, restore_file, sha256
 from convert_media import convert
 from vendor_pause import pause_vendor
-from current_media import detect_current_media
 from backup_store import data_home, new_snapshot, preserve_original, original_directory, device_home
 from quality_preview import QualityPreview
 from hover_help import question_icon
@@ -27,7 +26,7 @@ from ui_theme import (configure_theme, MeshHeader, RoundedCard, SoftProgress, Re
                       theme_font, scalable_image, PAGE, MUTED, PRIMARY, PREVIEW)
 from ui_settings import needs_startup_notice, remember_notice_read
 
-APP_VERSION = '1.2.2'
+APP_VERSION = '1.2.6'
 
 
 def configure_logging():
@@ -74,6 +73,7 @@ class App:
         self.root, self.events, self.busy = root, queue.Queue(), False
         self.asset, self.frames, self.preview_index, self.playing = None, [], 0, False
         self.current_media = None
+        self.preview_kind = None
         self.preview_source = None
         self.preview_generation = 0
         self.preview_after = None
@@ -117,10 +117,10 @@ class App:
             self.buttons.append(button)
         self.notice_button = ttk.Button(row, text='提醒事项', command=self.show_notice, style='Small.TButton')
         self.notice_button.pack(side='left', padx=(7, 0))
-        self.profile_note = tk.StringVar(value='自动识别设备；无设备时可选择型号预览素材')
-        ttk.Label(device_card.body, textvariable=self.profile_note, style='Subtle.TLabel').pack(anchor='w', pady=(4, 0))
         self.device_text = tk.StringVar(value="正在检测屏幕……")
-        ttk.Label(device_card.body, textvariable=self.device_text, foreground='#696b9c').pack(anchor='w', pady=(2, 0))
+        self.device_label = ttk.Label(device_card.body, textvariable=self.device_text,
+                                      foreground='#696b9c', wraplength=1020)
+        self.device_label.pack(anchor='w', pady=(5, 0))
         body = tk.Frame(outer, background=PAGE)
         self.content_body = body
         body.pack(fill="both", expand=True, pady=(0, 10))
@@ -133,7 +133,8 @@ class App:
         preview_heading = ttk.Frame(left)
         preview_heading.pack(fill='x', pady=(0, 10))
         ttk.Label(preview_heading, text='画面预览', style='CardTitle.TLabel').pack(side='left')
-        ttk.Label(preview_heading, text='本地预览 · 30 FPS', style='Subtle.TLabel').pack(side='right')
+        self.preview_caption = tk.StringVar(value='本地预览 · 30 FPS')
+        ttk.Label(preview_heading, textvariable=self.preview_caption, style='Subtle.TLabel').pack(side='right')
         preview_area = tk.Frame(left, background=PREVIEW, width=480, height=360)
         self.preview_area = preview_area
         preview_area.pack_propagate(False)
@@ -151,7 +152,7 @@ class App:
         panel = controls_card.body
         ttk.Label(panel, text='素材与写入', style='CardTitle.TLabel').pack(anchor='w', pady=(0, 10))
         for text, action, button_style in [("写入自定义视频", self.choose_media, 'Primary.TButton'),
-                             ("恢复钛坦原始动画", self.restore, 'TButton'),
+                             ("恢复钛钽原始动画", self.restore, 'TButton'),
                              ("播放 / 暂停本地预览", self.toggle_preview, 'TButton')]:
             button = ttk.Button(panel, text=text, command=action, style=button_style)
             button.pack(fill="x", pady=(0, 7))
@@ -220,6 +221,7 @@ class App:
         self.quality_hint_label.configure(wraplength=round(395 * scale))
         self.format_label.configure(wraplength=round(395 * scale))
         self.status_label.configure(wraplength=round(940 * scale))
+        self.device_label.configure(wraplength=round(1020 * scale))
         self.resize_preview()
 
     def resize_preview(self, event=None):
@@ -290,7 +292,8 @@ class App:
         self.profile = profile
         self.resize_preview()
         shape = '圆形可视区域 · ' if profile.visible_shape == 'circle' else ''
-        self.profile_note.set(f'{profile.name} · {profile.dimensions} · {shape}{profile.validation_note}')
+        if self.device_identity is None:
+            self.device_text.set(f'{profile.name} · {profile.dimensions} · {shape}{profile.validation_note}')
         self.fill_help.hover_help.text = self.crop_help_text(profile)
 
     def model_changed(self, event=None):
@@ -304,11 +307,11 @@ class App:
         else:
             self.apply_profile_view(LG700_PROFILE)
             self.profile = None
-            self.profile_note.set('自动识别设备；无设备时可选择型号预览素材')
+            self.device_text.set('自动识别设备；无设备时可选择型号预览素材')
         self.detect()
 
     def update_hardware_size(self, size):
-        self.device_text.set(f'{self.model_summary} · 当前屏幕动画 {size / 1048576:.2f} MiB（已保存）')
+        self.device_text.set(f'{self.model_summary} · 已保存 {size / 1048576:.2f} MiB · {self.target_profile().validation_note}')
 
     def stop_preview_timer(self):
         if self.tick_after is not None:
@@ -344,6 +347,8 @@ class App:
             self.root.after_cancel(self.preview_after)
             self.preview_after = None
         if not self.preview_source:
+            if self.preview_kind == 'hardware_first_frame':
+                return
             self.quality_size.set('动画大小：无素材')
             return
         self.quality_size.set('动画大小：计算中…')
@@ -378,6 +383,8 @@ class App:
         self.stop_preview_timer()
         self.playing = False
         self.asset = data
+        self.preview_kind = 'local_asset'
+        self.preview_caption.set('本地预览 · 30 FPS')
         self.frames = unpack_boot(data, inspect_jpeg=False, profile=self.target_profile())
         self.preview_index = 0
         self.preview_ready = True
@@ -395,6 +402,24 @@ class App:
             self.playing = True
             self.preview_wanted_playing = False
             self.tick()
+
+    def apply_hardware_first_frame(self, snapshot):
+        self.stop_preview_timer()
+        self.update_hardware_size(snapshot['total_size'])
+        self.playing = False
+        self.preview_wanted_playing = False
+        self.preview_kind = 'hardware_first_frame'
+        self.preview_caption.set('硬件首帧 · 静态预览')
+        self.preview_source = self.current_media = self.asset = None
+        self.frames = [snapshot['jpeg']]
+        self.preview_index = 0
+        self.preview_ready = True
+        self.quality_size.set(f"硬件动画：{snapshot['total_size'] / 1048576:.2f} MiB")
+        self.quality_size_label.configure(foreground='#166534')
+        self.quality_hint.set(f"共 {snapshot['frame_count']} 帧 · 只读取首帧，未转码")
+        self.quality_hint_label.configure(foreground=MUTED)
+        self.file_text.set(f"硬件已保存动画的首帧 · JPEG {snapshot['frame_size'] / 1024:.1f} KiB · 非实时画面")
+        self.draw()
 
     def run(self, action):
         if self.busy:
@@ -450,9 +475,13 @@ class App:
                 elif event[0] == 'quality_result':
                     self.accept_quality_result(event)
                 elif event[0] == "reset_current":
+                    self.stop_preview_timer()
                     self.device_identity = None
                     self.current_media = None
                     self.preview_source = None
+                    self.preview_kind = None
+                    self.preview_caption.set('硬件首帧 · 读取中')
+                    self.asset = None
                     self.preview_generation += 1
                     self.preview_ready = False
                     self.frames, self.playing = [], False
@@ -461,20 +490,20 @@ class App:
                                             font=theme_font(self.root, 16))
                     self.file_text.set("正在识别当前素材……")
                 elif event[0] == "media_missing":
-                    self.quality_size.set('动画大小：无素材')
-                    self.file_text.set("未识别到软件当前动画，可使用本地视频或图片")
+                    self.quality_size.set('首帧预览：不可用')
+                    self.quality_hint.set('未用官方素材替代；仍可选择本地文件写入')
+                    self.preview_caption.set('硬件首帧 · 未取得')
+                    self.file_text.set("已识别设备，未能读取可靠的硬件首帧；请稍后重新识别")
                     self.canvas.delete("all")
-                    self.canvas.create_text(self.preview_size[0] / 2, self.preview_size[1] / 2, text="请选择本地视频或图片", fill="#b6c2d1",
+                    self.canvas.create_text(self.preview_size[0] / 2, self.preview_size[1] / 2, text="未取得硬件首帧", fill="#b6c2d1",
                                             font=theme_font(self.root, 16))
-                elif event[0] == "current":
-                    self.current_media = event[1]
-                    self.preview_source = event[1]['path']
-                    self.file_text.set("软件当前动画：" + event[1]["name"] +
-                                       f" · 源文件 {event[1]['bytes'] / 1048576:.2f} MiB")
-                    self.request_quality_preview(delay=0)
+                elif event[0] == 'hardware_first_frame':
+                    self.apply_hardware_first_frame(event[1])
                 elif event[0] == 'custom_source':
                     path = Path(event[1])
                     self.preview_source = str(path)
+                    self.preview_kind = 'local_asset'
+                    self.preview_caption.set('本地预览 · 30 FPS')
                     self.file_text.set(f'自定义素材：{path.name} · 源文件 {path.stat().st_size / 1048576:.2f} MiB')
                 elif event[0] == 'prepared_asset':
                     self.apply_preview_data(event[1], event[2])
@@ -503,7 +532,7 @@ class App:
         def job():
             self.events.put(("reset_current",))
             self.stage('识别设备')
-            with self.vendor_session(), LG700(profile=requested) as device:
+            with LG700(profile=requested) as device:
                 meta = device.metadata(1)
                 profile = device.profile
                 model = device.info.get('product_string', profile.name).strip()
@@ -511,13 +540,17 @@ class App:
                                  connection_identity(device.info)))
                 self.note("设备连接成功；备份目录：" + str(device_home(device)))
                 self.note(profile.validation_note)
-            try:
-                media = detect_current_media(profile)
-                self.events.put(("current", media))
-                self.note("已识别钛坦软件当前动画：" + media["name"])
-            except (OSError, ValueError) as error:
-                self.events.put(("media_missing",))
-                self.note("设备已连接，当前软件动画未能识别：" + str(error) + "。仍可写入本地文件。")
+                self.stage('读取硬件动画首帧（只读，不切换模式）')
+                try:
+                    snapshot = device.read_boot_first_frame()
+                    self.events.put(('hardware_first_frame', snapshot))
+                    self.note(f"硬件首帧读取完成：共 {snapshot['frame_count']} 帧，"
+                              f"仅传输 {snapshot['read_bytes'] / 1024:.1f} KiB，"
+                              f"用时 {snapshot['seconds']:.2f} 秒；没有读取整段动画。")
+                    self.note('硬件首帧已读取（只读，未转码）', 100)
+                except (OSError, ValueError) as error:
+                    self.events.put(('media_missing',))
+                    self.note('设备已连接，首帧预览未取得：' + str(error) + '；没有使用官方软件配置替代。')
         self.run(job)
 
     def backup(self):
@@ -549,7 +582,7 @@ class App:
                 preserve_original(device, directory)
                 self.stage('设置离线播放模式')
                 self.enable_offline(device, directory)
-            self.note('离线播放设置已发送；原动画未重写，官方传屏按勾选状态处理。')
+            self.note('离线播放设置已发送；原动画未重写，设备会话结束后恢复临时暂停的官方软件。')
         self.run(job)
 
     def draw(self):
@@ -561,6 +594,9 @@ class App:
         self.canvas.create_image(0, 0, anchor="nw", image=self.photo)
 
     def toggle_preview(self):
+        if self.preview_kind == 'hardware_first_frame':
+            self.note('当前为硬件首帧静态预览，不会读取完整动画或捕获实时传屏。')
+            return
         if not self.preview_ready:
             self.request_quality_preview(delay=0, play=True)
             return
@@ -660,7 +696,7 @@ class App:
             with self.vendor_session(), LG700(profile=profile, expected_identity=identity) as device:
                 path = str(original_directory(device))
         except Exception:
-            path = filedialog.askdirectory(title="选择包含 manifest.json 的钛坦原始备份目录",
+            path = filedialog.askdirectory(title="选择包含 manifest.json 的钛钽原始备份目录",
                                            initialdir=str(data_home() / "Backups"))
         if not path:
             return

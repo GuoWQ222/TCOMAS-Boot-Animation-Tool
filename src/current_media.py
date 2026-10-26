@@ -168,7 +168,7 @@ def local_storage(directory, key_name):
         except FileNotFoundError:
             continue  # Chromium may compact an SSTable while being read
     if latest is None or latest[1] != 1:
-        raise FileNotFoundError(f"未找到 {key_name} 页面记录，请先在钛坦软件中应用动画")
+        raise FileNotFoundError(f"未找到 {key_name} 页面记录，请先在钛钽软件中应用动画")
     value = latest[2]
     if not value:
         raise ValueError("当前动画记录为空")
@@ -192,7 +192,7 @@ def detect_current_media(profile=None):
             if not isinstance(preset, dict):
                 raise ValueError("当前页面不是可写入的图片或视频")
             if data.get("selectedSensors"):
-                raise ValueError("当前画面包含实时监控数据；请先在钛坦软件中选择纯视频/图片")
+                raise ValueError("当前画面包含实时监控数据；请先在钛钽软件中选择纯视频/图片")
             candidates = [preset.get(k) for k in ("nativePath", "video", "image")]
             for candidate in candidates:
                 if not isinstance(candidate, str) or candidate.startswith("blob:"):
@@ -206,7 +206,7 @@ def detect_current_media(profile=None):
                     return {"path": str(path), "name": path.name,
                             "page": state.get("pageType"), "bytes": path.stat().st_size,
                             "source": "T'OWEI 当前选择", "state": state}
-            raise FileNotFoundError("当前动画的本地文件不存在，请在钛坦软件中重新应用素材")
+            raise FileNotFoundError("当前动画的本地文件不存在，请在钛钽软件中重新应用素材")
         except (ValueError, OSError, KeyError, struct.error) as error:
             problems.append(str(error))
     raise FileNotFoundError("；".join(problems) or f"未发现 T'OWEI 的 {profile.name} 动画配置")

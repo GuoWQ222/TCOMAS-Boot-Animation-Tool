@@ -410,6 +410,10 @@ class LG700:
         return dict(selector=sel, size=size, active_record=active,
                     next_record=next_record, extra=extra)
 
+    def read_boot_first_frame(self, progress=lambda p: None):
+        from first_frame import read_boot_first_frame
+        return read_boot_first_frame(self, progress)
+
     def read_asset(self, selector, progress=lambda p: None):
         meta = self.metadata(selector)
         log.info('Read start selector=%d size=%d chunk=%d', selector, meta['size'], READ_CHUNK)

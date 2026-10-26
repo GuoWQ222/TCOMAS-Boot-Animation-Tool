@@ -1,0 +1,61 @@
+{
+  "version": "1.2.6",
+  "no_USB_access": true,
+  "real_official_software_touched": false,
+  "main_device_detection_mocked": true,
+  "startup_notice": {
+    "read_first": true,
+    "no_process_control_before_read": true,
+    "opens_main_once": true,
+    "minimum_window_text_fits": true
+  },
+  "models": [
+    {
+      "model": "lg700",
+      "shape": "rectangle",
+      "minimum_layout_fits": true,
+      "preview_dimensions": [
+        492,
+        369
+      ]
+    },
+    {
+      "model": "lg600",
+      "shape": "rectangle",
+      "minimum_layout_fits": true,
+      "preview_dimensions": [
+        369,
+        369
+      ]
+    },
+    {
+      "model": "lx800",
+      "shape": "circle",
+      "minimum_layout_fits": true,
+      "preview_dimensions": [
+        369,
+        369
+      ]
+    }
+  ],
+  "responsive": {
+    "larger_controls": true,
+    "larger_preview": true,
+    "reminder_round_trip_keeps_media": true,
+    "maximized": [
+      2560,
+      1369
+    ],
+    "restores_normal_size": true
+  },
+  "controls": {
+    "button_routing": true,
+    "disabled_buttons_do_not_invoke": true,
+    "progress_0_1_50_100": true,
+    "quality_slider": true,
+    "official_stop_feature_removed": true,
+    "help_popup": true,
+    "hardware_first_frame_without_transcoding": true,
+    "single_device_info_line": true
+  }
+}

@@ -48,12 +48,12 @@ def pause_vendor():
         for process in processes:
             handle = kernel.OpenProcess(0x0800 | 0x1000, False, process["ProcessId"])
             if not handle:
-                raise OSError("无法临时暂停钛坦软件，请手动退出它后重试")
+                raise OSError("无法临时暂停钛钽软件，请手动退出它后重试")
             path, length = ctypes.create_unicode_buffer(32768), wintypes.DWORD(32768)
             ok = kernel.QueryFullProcessImageNameW(handle, 0, path, ctypes.byref(length))
             if not ok or path.value.lower() != process["ExecutablePath"].lower():
                 kernel.CloseHandle(handle)
-                raise OSError("钛坦进程路径变化，已停止")
+                raise OSError("钛钽进程路径变化，已停止")
             status = native.NtSuspendProcess(handle)
             if status != 0:
                 kernel.CloseHandle(handle)

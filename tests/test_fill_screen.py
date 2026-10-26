@@ -112,7 +112,6 @@ class FillScreenTests(unittest.TestCase):
                     app.run.side_effect = lambda job: job()
                     source = str(self.source((1200, 480)))
                     with patch.object(lg700_tool.filedialog, 'askopenfilename', return_value=source), \
-                         patch.object(lg700_tool, 'detect_current_media', return_value={'path': source}), \
                          patch.object(lg700_tool, 'data_home', return_value=Path(self.folder.name)), \
                          patch.object(lg700_tool, 'convert', return_value=b'prepared') as conversion:
                         getattr(lg700_tool.App, method)(app)

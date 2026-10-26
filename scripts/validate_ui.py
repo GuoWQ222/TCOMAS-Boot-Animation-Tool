@@ -103,6 +103,22 @@ with tempfile.TemporaryDirectory() as temp:
                         visible_inside(widget, root)
                     assert app.log.winfo_rooty() + app.log.winfo_height() <= app.log.master.winfo_rooty() + app.log.master.winfo_height()
                     capture(root, profile.key + ('-minimum.png' if size.startswith('1080') else '.png'))
+                snapshot = {'jpeg': app.frames[0], 'total_size': 10_619_168, 'frame_count': 239,
+                            'frame_size': len(app.frames[0])}
+                app.model_summary = f'{profile.name} · REV 0075 · {profile.dimensions} · 开机区 11 MiB'
+                app.update_hardware_size(snapshot['total_size'])
+                app.events.put(('hardware_first_frame', snapshot))
+                settle(root, .2)
+                assert app.preview_kind == 'hardware_first_frame'
+                assert app.preview_source is None and app.asset is None
+                assert '10.13 MiB' in app.quality_size.get()
+                assert '硬件首帧' in app.preview_caption.get()
+                assert not hasattr(app, 'profile_note')
+                assert app.device_text.get().count(profile.name) == 1
+                app.quality_scale.set(66); app.fill_mode_changed(); settle(root, .1)
+                assert app.preview_kind == 'hardware_first_frame' and app.preview_source is None
+                assert '10.13 MiB' in app.quality_size.get()
+                capture(root, profile.key + '-hardware-first-frame.png')
                 results['models'].append({'model': profile.key, 'shape': profile.visible_shape,
                                           'minimum_layout_fits': True, 'preview_dimensions': app.preview_size})
             # Real button command routing and native disabled states, with mocked actions.
@@ -161,7 +177,8 @@ with tempfile.TemporaryDirectory() as temp:
                                      'maximized': maximized, 'restores_normal_size': True}
             results['controls'] = {'button_routing': True, 'disabled_buttons_do_not_invoke': True,
                                     'progress_0_1_50_100': True, 'quality_slider': True,
-                                    'official_stop_feature_removed': True, 'help_popup': True}
+                                    'official_stop_feature_removed': True, 'help_popup': True,
+                                    'hardware_first_frame_without_transcoding': True, 'single_device_info_line': True}
             hid.assert_not_called(); pause.assert_not_called()
         finally:
             for app in opened:

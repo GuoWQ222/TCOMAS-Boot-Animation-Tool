@@ -4,6 +4,8 @@ v1.0.1 的 Windows HID 收发与命令间隔调整、两轮完整读取实测及
 
 ## 正常播放路径
 
+v1.2.5 的“识别水冷与当前动画”不再读取官方软件的选中素材配置，而是对硬件动画包进行有界首帧读取；不读取完整动画、不切换模式，见 [轻量硬件首帧识别](first-frame-preview.md)。下文原厂实时传屏链路与永久素材存储链路仍分别成立。
+
 本机 T'OWEI 2.1.28 是 Electron 程序。其 `config.js` 将 LG700 配为 640×480、目标 30 FPS、JPEG 质量 70。`ledPipeline.js` 通过原生 addon 调用 `XYDataCenter.dll`，后者使用 OpenCV 解码、TurboJPEG 编码和 HID 写入，把画面不断传给屏幕。在线应用素材本身不会因此永久覆盖硬件开机素材。
 
 USB 设备为 `TCOMAS LG700`，VID/PID `1A2C:151C`。本机 REV `0067`。MI_00 是命令接口，MI_01 是传屏数据接口。Windows 使用内置 HID 驱动。
@@ -67,7 +69,7 @@ V75 初始化后的相关结构地址：开机 `0x1833D0`，待机 `0x1833EC`。
 
 ## 官方资料
 
-- [钛坦软件下载](https://www.tcomas.cn/downloads)
-- [钛坦固件下载页](https://www.tcomas.cn/FirmwareUpgradeTest)：公开的 LG700 V75 包标注 2025-09-03。
+- [钛钽软件下载](https://www.tcomas.cn/downloads)
+- [钛钽固件下载页](https://www.tcomas.cn/FirmwareUpgradeTest)：公开的 LG700 V75 包标注 2025-09-03。
 
 结论以本机安装程序、公开固件静态分析、本机 USB 读写实测和用户对离线循环及系统前播放的观察为依据。
