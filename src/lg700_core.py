@@ -25,6 +25,10 @@ SUPPORTED_REVISIONS = {0x67, 0x75}
 CMD_PAYLOAD = 436
 MAX_PACKETS = 50
 MAX_JPEG = 200_000
+# Observed native records use either no extra attributes or the paired 0x6000
+# attributes. Keep the original bytes in backups; do not normalize these bits.
+BOOT_ROOT_TAGS = frozenset({0x1000, 0x7000})
+BOOT_FRAME_FLAGS = frozenset({0x0000, 0x6000})
 READ_CHUNK = 8192
 WRITE_CHUNK = 8192
 COMMAND_SETTLE_SECONDS = 0.010
@@ -87,7 +91,7 @@ def unpack_boot(data: bytes, inspect_jpeg=True, *, profile=None) -> list[bytes]:
     count = flags & 0xFFF
     if check != checksum_record(size, table_size, prefix, flags):
         raise ValueError("动画包头校验失败")
-    if flags & 0xF000 != 0x1000 or not count:
+    if flags & 0xF000 not in BOOT_ROOT_TAGS or not count:
         raise ValueError("不是支持的原厂动画格式")
     if size != len(data) - 16 or table_size != count * 16:
         raise ValueError("动画包长度或帧表错误")
@@ -101,6 +105,8 @@ def unpack_boot(data: bytes, inspect_jpeg=True, *, profile=None) -> list[bytes]:
             "<IIIHH", data, table_start + 16 * n)
         if check != checksum_record(off, length, name_len, frame_flags):
             raise ValueError(f"第 {n} 帧记录校验失败")
+        if frame_flags not in BOOT_FRAME_FLAGS:
+            raise ValueError(f"第 {n} 帧记录标志不受支持")
         end = off + name_len + length
         if off < previous_end or not name_len or end > len(data):
             raise ValueError(f"第 {n} 帧偏移越界或重叠")

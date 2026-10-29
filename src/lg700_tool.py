@@ -26,7 +26,7 @@ from ui_theme import (configure_theme, MeshHeader, RoundedCard, SoftProgress, Re
                       theme_font, scalable_image, PAGE, MUTED, PRIMARY, PREVIEW)
 from ui_settings import needs_startup_notice, remember_notice_read
 
-APP_VERSION = '1.2.6'
+APP_VERSION = '1.2.7'
 
 
 def configure_logging():
@@ -174,7 +174,7 @@ class App:
         self.quality_hint_label = ttk.Label(panel, textvariable=self.quality_hint,
                                            foreground=MUTED, wraplength=395)
         self.quality_hint_label.pack(anchor='w', pady=(4, 0))
-        self.fill_screen = tk.BooleanVar(value=False)
+        self.fill_screen = tk.BooleanVar(value=True)
         self.crop_indicator_images = crop_checkbutton_images(root, style)
         fill_row = ttk.Frame(panel)
         fill_row.pack(anchor='w', pady=(8, 0))

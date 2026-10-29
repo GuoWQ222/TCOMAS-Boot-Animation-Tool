@@ -7,7 +7,8 @@ import io
 import struct
 import time
 from PIL import Image
-from lg700_core import READ_CHUNK, MAX_JPEG, checksum_record, sha256
+from lg700_core import (READ_CHUNK, MAX_JPEG, BOOT_ROOT_TAGS, BOOT_FRAME_FLAGS,
+                        checksum_record, sha256)
 
 
 def read_boot_first_frame(device, progress=lambda fraction: None):
@@ -47,13 +48,13 @@ def read_boot_first_frame(device, progress=lambda fraction: None):
     check, size, table_size, prefix, flags = struct.unpack('<IIIHH', header)
     frames = flags & 0xFFF
     if (check != checksum_record(size, table_size, prefix, flags) or
-            flags & 0xF000 != 0x1000 or not frames or prefix != 1 or
+            flags & 0xF000 not in BOOT_ROOT_TAGS or not frames or prefix != 1 or
             size != meta['size'] - 16 or table_size != frames * 16):
         raise ValueError('硬件动画包头或帧目录格式异常；没有读取整段动画')
     directory = read_range(16, prefix + 16)
     check, offset, length, name_length, frame_flags = struct.unpack_from('<IIIHH', directory, prefix)
     if (directory[0] != 0 or check != checksum_record(offset, length, name_length, frame_flags) or
-            frame_flags != 0 or not 1 <= name_length <= 128 or not 4 <= length <= MAX_JPEG or
+            frame_flags not in BOOT_FRAME_FLAGS or not 1 <= name_length <= 128 or not 4 <= length <= MAX_JPEG or
             offset < 16 + prefix + table_size or offset + name_length + length > size):
         raise ValueError('硬件首帧记录校验失败或偏移越界')
     progress(.15)
