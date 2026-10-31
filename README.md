@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/feature-cards-equal.svg" alt="图片常驻：上传一张图片，让喜欢的画面一直显示；视频循环：将视频保存到屏幕，进入系统前也能循环播放；解压即用：便携包解压即可运行，内置 Python 与 FFmpeg。" width="100%">
+  <img src="docs/assets/feature-cards-equal.svg" alt="图片常驻：上传一张图片，让喜欢的画面一直显示；视频循环：将视频保存到屏幕，关机时也能循环播放；解压即用：便携包解压即可运行，内置 Python 与 FFmpeg。" width="100%">
 </p>
 
 ## 💬 问题反馈 · Issues
