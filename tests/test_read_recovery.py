@@ -73,6 +73,7 @@ class ReadRecoveryTests(unittest.TestCase):
         app.vendor_session.side_effect = paused
         data = sample_boot()
         with patch('lg700_tool.pause_vendor', paused), \
+                patch('maintenance_backup.cached_safety_backup', return_value=None), \
                 patch('lg700_tool.LG700', return_value=fake_device), \
                 patch('lg700_tool.new_snapshot', return_value=Path('unused')):
             with self.assertRaisesRegex(OSError, 'before writing'):

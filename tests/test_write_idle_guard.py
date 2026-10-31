@@ -33,6 +33,7 @@ class WriteIdleGuardTests(unittest.TestCase):
         app.vendor_session.return_value=nullcontext()
         app.enable_offline.side_effect=lambda device,directory:device.set_offline_loop(True,directory)
         with patch('lg700_tool.pause_vendor',return_value=nullcontext()), \
+             patch('maintenance_backup.cached_safety_backup',return_value=None), \
              patch('lg700_tool.time.sleep'), \
              patch('lg700_tool.LG700',return_value=device), \
              patch('lg700_tool.new_snapshot',return_value=Path('unused-snapshot')), \

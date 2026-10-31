@@ -31,7 +31,11 @@ BOOT_ROOT_TAGS = frozenset({0x1000, 0x7000})
 BOOT_FRAME_FLAGS = frozenset({0x0000, 0x6000})
 READ_CHUNK = 8192
 WRITE_CHUNK = 8192
-COMMAND_SETTLE_SECONDS = 0.010
+COMMAND_SETTLE_SECONDS = 0.015
+READ_ONLY_ATTEMPTS = 3
+RESYNC_QUIET_MS = 25
+RESYNC_MAX_SECONDS = 1.0
+RESYNC_BACKOFF_SECONDS = (0.017, 0.031)
 log = logging.getLogger('lg700.transport')
 
 
@@ -48,6 +52,10 @@ def open_command_transport(path):
 
 class ReadResponseError(OSError):
     """A read-only response did not match the requested offset or length."""
+
+
+class ResponseSyncError(TimeoutError):
+    """Reports arrived, but a complete response could not be assembled."""
 
 
 def sha256(data):
@@ -132,6 +140,26 @@ def unpack_boot(data: bytes, inspect_jpeg=True, *, profile=None) -> list[bytes]:
 def capacity(selector, profile=None):
     begin, end = resolve_profile(profile).regions[selector]
     return end - begin - 20  # storage record is outside the animation container
+
+
+def is_empty_boot(meta, profile=None):
+    """Recognize the observed empty boot record, not arbitrary zero lengths."""
+    begin, _ = resolve_profile(profile).regions[1]
+    return (meta.get('selector') == 1 and meta.get('size') == 0
+            and meta.get('active_record') == 0xFFFFFFFF
+            and meta.get('next_record') == begin and meta.get('extra') == 0)
+
+
+def _read_backup_asset(directory, selector, saved, profile):
+    data = (Path(directory) / saved['file']).read_bytes()
+    if sha256(data) != saved['sha256']:
+        raise ValueError('素材备份 SHA-256 校验失败')
+    if saved.get('empty') is True:
+        if selector != 1 or data or not is_empty_boot(saved, profile):
+            raise ValueError('备份的空动画槽记录无效')
+    elif not data:
+        raise ValueError('备份文件为空，且没有有效的空动画槽记录')
+    return data
 
 
 def validate_asset(selector, data, *, profile=None):
@@ -237,13 +265,38 @@ class LG700:
     def query(self, op, payload=b"", timeout_ms=6000):
         # A completed host read can precede the firmware's command cleanup.
         # Pace complete commands, preserving report bytes and 8 KiB chunks.
-        remaining = COMMAND_SETTLE_SECONDS - (time.monotonic() - getattr(self, '_last_query_finished', 0))
-        if remaining > 0:
-            time.sleep(remaining)
-        try:
-            return self._query(op, payload, timeout_ms)
-        finally:
-            self._last_query_finished = time.monotonic()
+        # Only version and metadata probes can be repeated here. Asset reads
+        # recover at read_asset(), which also checks the unchanged asset identity.
+        # Erase, write, commit and mode commands always have exactly one attempt.
+        attempts = READ_ONLY_ATTEMPTS if op in (0x87, 0x0C) else 1
+        for attempt in range(attempts):
+            remaining = COMMAND_SETTLE_SECONDS - (time.monotonic() - getattr(self, '_last_query_finished', 0))
+            if remaining > 0:
+                time.sleep(remaining)
+            try:
+                return self._query(op, payload, timeout_ms if attempt == 0 else min(timeout_ms, 1200))
+            except (ResponseSyncError, TimeoutError) as error:
+                if attempt + 1 == attempts:
+                    raise
+                discarded = self._drain_input()
+                delay = RESYNC_BACKOFF_SECONDS[attempt]
+                log.warning('Read-only probe resync op=%02X attempt=%d discarded=%d backoff=%.3f: %s',
+                            op, attempt + 1, discarded, delay, error)
+                self.transport_resyncs = getattr(self, 'transport_resyncs', 0) + 1
+                time.sleep(delay)
+            finally:
+                self._last_query_finished = time.monotonic()
+
+    def _drain_input(self):
+        """Wait for a quiet receive interval, bounded by time and report count."""
+        deadline = time.monotonic() + RESYNC_MAX_SECONDS
+        for discarded in range(MAX_PACKETS * 2):
+            if time.monotonic() >= deadline:
+                break
+            raw = bytes(self.hid.read(440, RESYNC_QUIET_MS))
+            if not raw:
+                return discarded
+        raise OSError('命令口持续返回旧数据，已停止；请让屏幕彻底断电后重试')
 
     def _query(self, op, payload=b"", timeout_ms=6000):
         if op == 0x1E:
@@ -262,25 +315,35 @@ class LG700:
         last_unexpected = None
         while True:
             remaining = max(1, int((deadline - time.monotonic()) * 1000))
-            raw = bytes(self.hid.read(440, remaining))
+            # After a stray continuation, wait for one quiet interval instead
+            # of repeatedly landing on the same device timer phase six seconds
+            # later. Never invent a missing header or accept a partial response.
+            wait_ms = remaining if last_unexpected is None else min(remaining, RESYNC_QUIET_MS)
+            raw = bytes(self.hid.read(440, wait_ms))
             if len(raw) != 440:
                 detail = f'；最后收到旧包头 0x{last_unexpected:08X}' if last_unexpected is not None else ''
-                raise TimeoutError(f"命令 0x{op:02X} 等待响应超时{detail}")
+                error = ResponseSyncError if last_unexpected is not None else TimeoutError
+                raise error(f"命令 0x{op:02X} 等待响应超时{detail}")
             head = struct.unpack_from("<I", raw)[0]
             if head & 0xFF == op and head & 0x80000000:
                 break
             last_unexpected = head
             log.warning('Discarded unrelated packet while waiting for op=%02X: header=%08X', op, head)
             if time.monotonic() >= deadline:
-                raise TimeoutError("收到其他命令响应，请退出原厂软件后重试")
+                raise ResponseSyncError("收到其他命令响应，请退出原厂软件后重试")
         count = (head & 0x7FFFFFFF) >> 8
         if not 1 <= count <= MAX_PACKETS:
-            raise OSError("设备返回无效包数")
+            raise ResponseSyncError("设备返回无效包数")
+        if op != 0x0D and count != 1:
+            raise ResponseSyncError('设备返回的应答包数与命令不符')
         chunks = [raw[4:]]
         for seq in range(1, count):
-            raw = bytes(self.hid.read(440, timeout_ms))
+            remaining = max(1, int((deadline - time.monotonic()) * 1000))
+            raw = bytes(self.hid.read(440, remaining))
             if len(raw) != 440 or struct.unpack_from("<I", raw)[0] != (seq << 8 | op):
-                raise OSError(f"响应包顺序错误：{seq}/{count}")
+                raise ResponseSyncError(f"响应包顺序错误：{seq}/{count}")
+            if time.monotonic() >= deadline:
+                raise ResponseSyncError(f'命令 0x{op:02X} 响应超过总等待时间')
             chunks.append(raw[4:])
         result = b"".join(chunks)
         if op == 0x0D:
@@ -301,14 +364,8 @@ class LG700:
 
         Only used for failed reads. It never retries write/commit/mode commands.
         """
-        discarded = 0
-        for _ in range(MAX_PACKETS * 2):
-            raw = bytes(self.hid.read(440, 10))
-            if not raw:
-                break
-            discarded += 1
-        else:
-            raise OSError('命令口持续返回旧数据，已停止；请让屏幕彻底断电后重试')
+        discarded = self._drain_input()
+        time.sleep(RESYNC_BACKOFF_SECONDS[0])
         current = self.metadata(original_meta['selector'])
         if self._asset_identity(current) != self._asset_identity(original_meta):
             raise OSError('读取期间屏幕素材发生变化，已停止，不能混合保存新旧数据')
@@ -362,10 +419,12 @@ class LG700:
         manifest = json.loads((directory / 'manifest.json').read_text(encoding='utf8'))
         check_manifest_device(manifest, self.profile, revision=self.revision,
                               info=getattr(self, 'info', None))
-        for name in ('boot', 'standby'):
+        for selector, name in ((1, 'boot'), (0, 'standby')):
             saved = manifest['assets'][name]
-            if sha256((directory / saved['file']).read_bytes()) != saved['sha256']:
-                raise ValueError('设置播放模式前，素材备份 SHA-256 校验失败')
+            _read_backup_asset(directory, selector, saved, self.profile)
+        if enabled and manifest['assets']['boot'].get('empty') is True:
+            if is_empty_boot(self.metadata(1), self.profile):
+                raise ValueError('屏幕尚未保存开机动画，请先写入本地图片或视频，再设置离线播放')
         audit = {'model': self.profile.key, 'revision': f'{self.revision:04X}', 'command': '0x1E',
                  'mode': 1 if enabled else 0, 'previous_mode': None,
                  'mode_readback_supported': False, 'acknowledged': False,
@@ -408,13 +467,21 @@ class LG700:
     def metadata(self, selector):
         raw = self.query(0x0C, struct.pack("<II", selector, 0))
         sel, size, active, next_record, extra = struct.unpack_from("<IiIII", raw)
+        meta = dict(selector=sel, size=size, active_record=active,
+                    next_record=next_record, extra=extra)
+        if selector == 1 and is_empty_boot(meta, self.profile):
+            # Confirm the complete signature before allowing an initial write.
+            confirmed = self.query(0x0C, struct.pack('<II', selector, 0))
+            if struct.unpack_from('<IiIII', confirmed) != (sel, size, active, next_record, extra):
+                raise OSError('空动画槽元数据发生变化，已停止，请重新识别')
+            meta['empty'] = True
+            return meta
         if sel != selector or not 0 < size <= capacity(selector, self.profile):
             raise OSError(f"素材元数据异常：selector={sel}, size={size}")
         begin, end = self.profile.regions[selector]
         if active < begin or active >= end or not active < next_record <= end:
             raise OSError(f"素材地址与已知 {self.profile.name} 存储布局不符，已停止")
-        return dict(selector=sel, size=size, active_record=active,
-                    next_record=next_record, extra=extra)
+        return meta
 
     def read_boot_first_frame(self, progress=lambda p: None):
         from first_frame import read_boot_first_frame
@@ -422,6 +489,9 @@ class LG700:
 
     def read_asset(self, selector, progress=lambda p: None):
         meta = self.metadata(selector)
+        if selector == 1 and is_empty_boot(meta, self.profile):
+            progress(1)
+            return b'', meta
         log.info('Read start selector=%d size=%d chunk=%d', selector, meta['size'], READ_CHUNK)
         result = bytearray()
         while len(result) < meta["size"]:
@@ -454,7 +524,11 @@ class LG700:
                     "revision": f"{self.revision:04X}"}, "assets": {}}
         for selector, name in [(1, "boot"), (0, "standby")]:
             data, meta = self.read_asset(selector, lambda p: progress(name, p))
-            validate_asset(selector, data, profile=self.profile)
+            if selector == 1 and not data and is_empty_boot(meta, self.profile):
+                meta['empty'] = True
+                log.info('Backup: confirmed empty boot slot; preserving standby separately')
+            else:
+                validate_asset(selector, data, profile=self.profile)
             file = directory / f"{name}.bin"
             file.write_bytes(data)
             # Verify the persisted backup before exposing it to the write operation.
@@ -478,9 +552,9 @@ class LG700:
                               info=getattr(self, 'info', None))
         asset_name = "boot" if selector else "standby"
         saved = manifest["assets"][asset_name]
-        previous = (directory / saved["file"]).read_bytes()
-        if sha256(previous) != saved["sha256"]:
-            raise ValueError("备份 SHA-256 校验失败")
+        previous = _read_backup_asset(directory, selector, saved, self.profile)
+        if recovery and saved.get('empty') is True:
+            raise ValueError('原始开机动画为空，无法恢复不存在的动画；请写入本地图片或视频')
         if not recovery:
             current_meta = self.metadata(selector)
             if current_meta["size"] != saved["size"]:
@@ -542,15 +616,17 @@ class LG700:
         return data
 
 
-def restore_file(directory, selector, *, profile=None):
+def restore_file(directory, selector, *, profile=None, allow_empty=False):
     directory = Path(directory)
     manifest = json.loads((directory / "manifest.json").read_text(encoding="utf8"))
     selected = manifest_profile(manifest) if profile is None else resolve_profile(profile)
     check_manifest_device(manifest, selected)
     name = "boot" if selector else "standby"
     record = manifest["assets"][name]
-    data = (directory / record["file"]).read_bytes()
-    if sha256(data) != record["sha256"]:
-        raise ValueError("恢复文件 SHA-256 校验失败")
+    data = _read_backup_asset(directory, selector, record, selected)
+    if record.get('empty') is True:
+        if not allow_empty:
+            raise ValueError('此备份中的原始开机动画为空，没有可恢复的动画；请写入本地图片或视频')
+        return data
     validate_asset(selector, data, profile=selected)
     return data

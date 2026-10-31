@@ -13,10 +13,11 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from PIL import Image, ImageTk, ImageDraw
-from lg700_core import LG700, capacity, unpack_boot, restore_file, sha256
+from lg700_core import LG700, capacity, unpack_boot, restore_file, sha256, is_empty_boot
 from convert_media import convert
 from vendor_pause import pause_vendor
 from backup_store import data_home, new_snapshot, preserve_original, original_directory, device_home
+from maintenance_backup import backup_before_update
 from quality_preview import QualityPreview
 from hover_help import question_icon
 from device_profiles import PROFILES, LG700_PROFILE, resolve_profile, connection_identity
@@ -26,7 +27,7 @@ from ui_theme import (configure_theme, MeshHeader, RoundedCard, SoftProgress, Re
                       theme_font, scalable_image, PAGE, MUTED, PRIMARY, PREVIEW)
 from ui_settings import needs_startup_notice, remember_notice_read
 
-APP_VERSION = '1.2.7'
+APP_VERSION = '1.2.9'
 
 
 def configure_logging():
@@ -489,6 +490,15 @@ class App:
                     self.canvas.create_text(self.preview_size[0] / 2, self.preview_size[1] / 2, text="正在识别当前素材……", fill="#b6c2d1",
                                             font=theme_font(self.root, 16))
                     self.file_text.set("正在识别当前素材……")
+                elif event[0] == 'boot_empty':
+                    self.device_text.set(self.model_summary + ' · 尚未保存开机动画')
+                    self.quality_size.set('硬件动画：未保存')
+                    self.quality_hint.set('可选择本地图片或视频首次写入')
+                    self.preview_caption.set('硬件动画 · 未保存')
+                    self.file_text.set('设备已连接，开机动画为空；可选择本地图片或视频写入')
+                    self.canvas.delete('all')
+                    self.canvas.create_text(self.preview_size[0] / 2, self.preview_size[1] / 2,
+                        text='尚未保存开机动画', fill='#b6c2d1', font=theme_font(self.root, 16))
                 elif event[0] == "media_missing":
                     self.quality_size.set('首帧预览：不可用')
                     self.quality_hint.set('未用官方素材替代；仍可选择本地文件写入')
@@ -540,6 +550,10 @@ class App:
                                  connection_identity(device.info)))
                 self.note("设备连接成功；备份目录：" + str(device_home(device)))
                 self.note(profile.validation_note)
+                if is_empty_boot(meta, profile):
+                    self.events.put(('boot_empty',))
+                    self.note('屏幕尚未保存开机动画；可备份现有待机图，或选择本地图片、视频首次写入。', 100)
+                    return
                 self.stage('读取硬件动画首帧（只读，不切换模式）')
                 try:
                     snapshot = device.read_boot_first_frame()
@@ -575,11 +589,19 @@ class App:
     def repair_offline(self):
         profile, identity = self.target_profile(), self.device_identity
         def job():
-            self.stage('修复前备份（尚未修改播放模式）')
+            self.stage('修复前备份（有已核验备份时先暂停播放）')
             with self.vendor_session(), LG700(profile=profile, expected_identity=identity) as device:
+                if is_empty_boot(device.metadata(1), profile):
+                    raise ValueError('屏幕尚未保存开机动画，请先写入本地图片或视频，再设置离线播放')
                 directory = new_snapshot(device, 'before_playback_repair')
-                device.backup(directory, lambda name, p: self.note(f'修复前备份 {name}：{p:.0%}', p * 100))
-                preserve_original(device, directory)
+                manifest, paused = backup_before_update(device, directory,
+                    lambda name, p: self.note(f'修复前备份 {name}：{p:.0%}', p * 100))
+                try:
+                    preserve_original(device, directory)
+                except Exception:
+                    if paused and not manifest['assets']['boot'].get('empty'):
+                        device.set_offline_loop(True, directory)
+                    raise
                 self.stage('设置离线播放模式')
                 self.enable_offline(device, directory)
             self.note('离线播放设置已发送；原动画未重写，设备会话结束后恢复临时暂停的官方软件。')
@@ -637,12 +659,19 @@ class App:
         self.stage('写前备份（尚未发送擦除或写入）')
         with self.vendor_session(), LG700(profile=profile, expected_identity=identity) as device:
             directory = new_snapshot(device, "before_write")
-            device.backup(directory, lambda name, p: self.note(f"写前备份 {name}：{p:.0%}", p * 100))
+            manifest, paused = backup_before_update(device, directory,
+                lambda name, p: self.note(f"写前备份 {name}：{p:.0%}", p * 100))
             self.stage('核验原始备份（尚未发送擦除或写入）')
-            original = preserve_original(device, directory)
+            try:
+                original = preserve_original(device, directory)
+            except Exception:
+                if paused and not manifest['assets']['boot'].get('empty'):
+                    device.set_offline_loop(True, directory)
+                raise
             self.note("原始备份已保留：" + str(original))
             self.stage('暂停离线循环（备份已核验，尚未擦写素材）')
-            device.set_offline_loop(False, directory)
+            if not paused:
+                device.set_offline_loop(False, directory)
             self.note('已发送维护模式 0，写入和读回期间保持；校验成功后再恢复离线循环。')
             self.stage('素材写入及完整读回校验')
             # The same first frame must exist in both playback paths.  The
@@ -708,13 +737,13 @@ class App:
         def job():
             self.stage('恢复前备份')
             with self.vendor_session(), LG700(profile=profile, expected_identity=identity) as device:
+                self.stage('恢复前暂停离线循环（恢复备份已核验）')
+                device.set_offline_loop(False, path)
                 try:
                     directory = new_snapshot(device, "before_restore")
                     device.backup(directory, lambda name, p: self.note(f"恢复前备份 {name}：{p:.0%}", p * 100))
                 except (OSError, ValueError) as error:
                     self.note("当前素材无法完整备份，将用现有原厂备份恢复：" + str(error))
-                self.stage('恢复前暂停离线循环')
-                device.set_offline_loop(False, path)
                 self.stage('恢复素材并完整读回校验')
                 for selector in (1, 0):
                     def update(p, selector=selector):

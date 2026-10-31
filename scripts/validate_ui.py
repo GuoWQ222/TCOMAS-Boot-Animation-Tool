@@ -119,8 +119,23 @@ with tempfile.TemporaryDirectory() as temp:
                 assert app.preview_kind == 'hardware_first_frame' and app.preview_source is None
                 assert '10.13 MiB' in app.quality_size.get()
                 capture(root, profile.key + '-hardware-first-frame.png')
+                app.events.put(('reset_current',))
+                app.events.put(('device', profile.name, 0x75, 0, profile, None))
+                app.events.put(('boot_empty',))
+                settle(root, .2)
+                assert '尚未保存开机动画' in app.device_text.get()
+                assert app.quality_size.get() == '硬件动画：未保存'
+                assert '首次写入' in app.quality_hint.get()
+                assert not app.frames and app.preview_source is None
+                for widget in (app.canvas, app.quality_hint_label, *app.buttons):
+                    visible_inside(widget, root)
+                capture(root, profile.key + '-empty-boot.png')
+                app.events.put(('hardware_first_frame', snapshot))
+                app.update_hardware_size(snapshot['total_size'])
+                settle(root, .2)
                 results['models'].append({'model': profile.key, 'shape': profile.visible_shape,
-                                          'minimum_layout_fits': True, 'preview_dimensions': app.preview_size})
+                                          'minimum_layout_fits': True, 'preview_dimensions': app.preview_size,
+                                          'empty_boot_first_write_message': True})
             # Real button command routing and native disabled states, with mocked actions.
             for button in app.buttons:
                 button.configure(state='disabled'); button.invoke()

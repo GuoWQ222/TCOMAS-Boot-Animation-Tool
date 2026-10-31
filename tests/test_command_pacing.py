@@ -12,7 +12,7 @@ class CommandPacingTests(unittest.TestCase):
         with patch('lg700_core.time.monotonic', side_effect=(10.003, 10.02)), \
                 patch('lg700_core.time.sleep') as sleep:
             self.assertEqual(device.query(0x87), b'accepted')
-        self.assertAlmostEqual(sleep.call_args.args[0], .007)
+        self.assertAlmostEqual(sleep.call_args.args[0], .012)
         device._query.assert_called_once_with(0x87, b'', 6000)
 
     def test_failed_output_is_recorded_but_not_retried(self):

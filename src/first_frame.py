@@ -8,12 +8,14 @@ import struct
 import time
 from PIL import Image
 from lg700_core import (READ_CHUNK, MAX_JPEG, BOOT_ROOT_TAGS, BOOT_FRAME_FLAGS,
-                        checksum_record, sha256)
+                        checksum_record, sha256, is_empty_boot)
 
 
 def read_boot_first_frame(device, progress=lambda fraction: None):
     started = time.monotonic()
     meta = device.metadata(1)
+    if is_empty_boot(meta, device.profile):
+        raise ValueError('屏幕尚未保存开机动画，可选择本地图片或视频写入')
     transferred = 0
 
     def read_range(offset, length):

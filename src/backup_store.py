@@ -36,7 +36,7 @@ def preserve_original(device, snapshot):
     original = device_home(device) / "Original"
     if original.exists():
         # Never replace the first valid original with later custom animations.
-        restore_file(original, 1, profile=device.profile)
+        restore_file(original, 1, profile=device.profile, allow_empty=True)
         restore_file(original, 0, profile=device.profile)
         return original
     original.parent.mkdir(parents=True, exist_ok=True)
@@ -44,7 +44,7 @@ def preserve_original(device, snapshot):
     if temporary.exists():
         raise RuntimeError("存在未完成的原始备份，请先检查 Original.pending 目录")
     shutil.copytree(snapshot, temporary)
-    restore_file(temporary, 1, profile=device.profile)
+    restore_file(temporary, 1, profile=device.profile, allow_empty=True)
     restore_file(temporary, 0, profile=device.profile)
     temporary.rename(original)
     return original
@@ -54,6 +54,6 @@ def original_directory(device):
     directory = device_home(device) / "Original"
     if not (directory / "manifest.json").is_file():
         raise FileNotFoundError("此电脑尚无该屏幕的原始备份，请先备份或导入原始备份目录")
-    restore_file(directory, 1, profile=device.profile)
+    restore_file(directory, 1, profile=device.profile, allow_empty=True)
     restore_file(directory, 0, profile=device.profile)
     return directory
