@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="188" viewBox="0 0 1200 188" fill="none" role="img" aria-labelledby="title desc">
   <title id="title">图片常驻、视频循环、解压即用</title>
-  <desc id="desc">三个等宽栏目。图片常驻：上传一张图片，让喜欢的画面一直显示。视频循环：将视频保存到屏幕，进入系统前也能循环播放。解压即用：便携包解压即可运行，内置 Python 与 FFmpeg。</desc>
+  <desc id="desc">三个等宽栏目。图片常驻：上传一张图片，让喜欢的画面一直显示。视频循环：将视频保存到屏幕，关机时也能循环播放。解压即用：便携包解压即可运行，内置 Python 与 FFmpeg。</desc>
   <style>
     .surface { fill: #ffffff; stroke: #d1d9e0; }
     .divider { stroke: #d1d9e0; }
@@ -35,7 +35,7 @@
       <text x="200" y="112">上传一张图片</text>
       <text x="200" y="147">让喜欢的画面一直显示</text>
       <text x="600" y="112">将视频保存到屏幕</text>
-      <text x="600" y="147">进入系统前也能循环播放</text>
+      <text x="600" y="147">关机时也能循环播放</text>
       <text x="1000" y="112">便携包解压即可运行</text>
       <text x="1000" y="147">内置 Python 与 FFmpeg</text>
     </g>
