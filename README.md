@@ -31,7 +31,7 @@
 
 ## 💬 问题反馈 · Issues
 
-遇到故障或报错？请前往 [Issues 提交问题](https://github.com/GuoWQ222/TCOMAS-Boot-Animation-Tool/issues/new)，**完整描述操作步骤、报错内容和出现问题的全过程**，便于定位原因。
+遇到故障或报错？请前往 [Issues 提交问题](https://github.com/GuoWQ222/TCOMAS-Boot-Animation-Tool/issues/new)或在 [B站评论区](https://www.bilibili.com/video/BV1NEHG6NEny/?spm_id_from=333.1387.homepage.video_card.click&vd_source=988a3430b47ac87e735b1c75c29ae8f6)提出，**完整描述操作步骤、报错内容和出现问题的全过程**，便于定位原因。
 
 > [!IMPORTANT]
 > 报错后，先确认当前操作已经停止，再正常关机并断电（拔掉电源线）。**确保水冷屏幕完全黑屏后，再重新上电。** 主机重启不一定切断屏幕供电；写入过程中请勿断电。
