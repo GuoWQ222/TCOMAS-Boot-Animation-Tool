@@ -7,7 +7,7 @@ and first-frame inspection do not use this helper.
 import json
 import logging
 
-from backup_store import device_home
+from backup_store import FACTORY_IMPORT, device_home
 from device_profiles import check_manifest_device
 from lg700_core import restore_file, is_empty_boot
 
@@ -26,7 +26,7 @@ def cached_safety_backup(device):
             manifest = json.loads((directory / 'manifest.json').read_text(encoding='utf8'))
             # Historical manifests without a persisted device identity cannot
             # authorize a mode change before taking the fresh live backup.
-            if not manifest.get('device', {}).get('device_key'):
+            if manifest.get('kind') == FACTORY_IMPORT or not manifest.get('device', {}).get('device_key'):
                 continue
             check_manifest_device(manifest, device.profile,
                                   revision=device.revision, info=device.info)

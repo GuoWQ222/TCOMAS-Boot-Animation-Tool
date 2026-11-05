@@ -1,4 +1,4 @@
-"""TCOMAS LG700 / LG600 / LX800 assets: GUI and read-only diagnostics."""
+"""TCOMAS LG700 / LG600 assets: GUI and read-only diagnostics."""
 import argparse
 import contextlib
 import json
@@ -8,6 +8,7 @@ import queue
 import sys
 import threading
 import time
+import webbrowser
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import tkinter as tk
@@ -17,17 +18,110 @@ from lg700_core import LG700, capacity, unpack_boot, restore_file, sha256, is_em
 from convert_media import convert
 from vendor_pause import pause_vendor
 from backup_store import data_home, new_snapshot, preserve_original, original_directory, device_home
-from maintenance_backup import backup_before_update
+from backup_store import FACTORY_IMPORT, convert_original_assets, restore_manifest
+from maintenance_backup import backup_before_update, cached_safety_backup
 from quality_preview import QualityPreview
 from hover_help import question_icon
-from device_profiles import PROFILES, LG700_PROFILE, resolve_profile, connection_identity
+from device_profiles import BackupDeviceMismatch, PROFILES, LG700_PROFILE, resolve_profile, connection_identity
+from error_details import describe_error, concise_error
 from preview_geometry import preview_frame
 from startup_notice import StartupNotice
 from ui_theme import (configure_theme, MeshHeader, RoundedCard, SoftProgress, ResponsiveLayout,
                       theme_font, scalable_image, PAGE, MUTED, PRIMARY, PREVIEW)
 from ui_settings import needs_startup_notice, remember_notice_read
 
-APP_VERSION = '1.2.9'
+APP_VERSION = '1.2.11'
+RECOMMENDED_FIRMWARE = 0x75
+FIRMWARE_DOWNLOAD_URL = 'https://www.tcomas.cn/FirmwareUpgradeTest'
+
+
+def show_error(parent, title, error, extra=''):
+    logging.getLogger('lg700.app').error(title, exc_info=(type(error), error, error.__traceback__))
+    message = concise_error(error)
+    if extra:
+        message += '\n' + extra
+    messagebox.showerror(title, message, parent=parent)
+
+
+def show_firmware_upgrade(parent, model, revision):
+    download = confirm_warning(
+        parent, title='建议升级屏幕固件', heading='警告 · 当前固件并非 V75',
+        message=f'当前屏幕为 {model}，检测到固件 REV {revision:04X}。\n'
+                f'建议按钛钽官方说明升级到 V75，请选择 TCOMAS_{model}_V75，否则本软件可能不会正常工作。\n\n'
+                f'钛钽官方下载页\n{FIRMWARE_DOWNLOAD_URL}',
+        confirm_label='打开官方下载页', cancel_label='稍后')
+    if not download:
+        return
+    try:
+        if not webbrowser.open(FIRMWARE_DOWNLOAD_URL):
+            raise RuntimeError('系统未能启动默认浏览器。')
+    except (OSError, RuntimeError, webbrowser.Error) as error:
+        show_error(parent, '无法打开下载页', error,
+                   f'请将以下地址复制到浏览器打开。\n{FIRMWARE_DOWNLOAD_URL}')
+
+
+def confirm_backup_conversion(parent, reason, target):
+    revision = getattr(reason, 'backup_revision', None)
+    backup_firmware = f'REV {revision}' if revision else '未记录'
+    return confirm_warning(
+        parent, title='原始备份不兼容', heading='警告 · 原始备份与当前屏幕不匹配',
+        message=f'{reason}\n备份固件：{backup_firmware}\n当前屏幕：{target}\n\n'
+                '继续后将检查备份兼容性。转换成功并完整备份当前素材后，才会尝试写入恢复。',
+        confirm_label='继续转换并恢复')
+
+
+def confirm_warning(parent, *, title, heading, message, confirm_label, cancel_label='取消'):
+    dialog = tk.Toplevel(parent)
+    dialog.withdraw()
+    dialog.title(title)
+    dialog.transient(parent)
+    dialog.resizable(False, False)
+    confirmed = False
+
+    def proceed():
+        nonlocal confirmed
+        confirmed = True
+        dialog.destroy()
+
+    red, panel = '#a71928', '#fff1f2'
+    tk.Label(dialog, text=heading,
+             bg=red, fg='white', font=theme_font(parent, 15, 'bold'),
+             anchor='w', padx=20, pady=14).pack(fill='x')
+    body = tk.Frame(dialog, bg=panel, padx=20, pady=16)
+    body.pack(fill='both', expand=True)
+    content = tk.Frame(body, bg=panel)
+    content.pack(fill='x')
+    icon = tk.Canvas(content, width=28, height=28, bg=panel, highlightthickness=0)
+    icon.create_polygon(12, 3, 14, 2, 16, 3, 26, 23, 26, 25, 24, 26, 4, 26,
+                        2, 25, 2, 23, fill='#ffc107', outline='#c78b00')
+    icon.create_line(14, 9, 14, 17, fill='#3d2c00', width=2, capstyle='round')
+    icon.create_oval(13, 20, 15, 22, fill='#3d2c00', outline='')
+    icon.pack(side='left', anchor='n', padx=(0, 12))
+    tk.Label(content, text=message, bg=panel, fg='#721c24', font=theme_font(parent, 11),
+             justify='left', anchor='w', wraplength=420).pack(side='left', fill='x', expand=True)
+    actions = tk.Frame(body, bg=panel)
+    actions.pack(fill='x', pady=(16, 0))
+    tk.Button(actions, text=confirm_label, command=proceed, bg=red, fg='white',
+              activebackground='#801320', activeforeground='white', padx=10).pack(side='right')
+    cancel = ttk.Button(actions, text=cancel_label, command=dialog.destroy)
+    cancel.pack(side='right', padx=(0, 10))
+    dialog.bind('<Escape>', lambda event: dialog.destroy())
+    # Size and position the dialog before mapping instead of accepting the
+    # window manager's default top-left placement.
+    owner = parent.winfo_toplevel()
+    dialog.tk.call('tk::PlaceWindow', str(dialog), 'widget', str(owner))
+    dialog.wait_visibility()
+    dialog.update_idletasks()
+    # Native window frames offset the mapped client area from wm geometry.
+    # Correct that offset so the actual visible centers coincide too.
+    dx = owner.winfo_rootx() + owner.winfo_width() / 2 - (dialog.winfo_rootx() + dialog.winfo_width() / 2)
+    dy = owner.winfo_rooty() + owner.winfo_height() / 2 - (dialog.winfo_rooty() + dialog.winfo_height() / 2)
+    dialog.geometry(f'+{round(dialog.winfo_x() + dx)}+{round(dialog.winfo_y() + dy)}')
+    dialog.update_idletasks()
+    dialog.grab_set()
+    cancel.focus_set()
+    parent.wait_window(dialog)
+    return confirmed
 
 
 def configure_logging():
@@ -40,6 +134,15 @@ def configure_logging():
     logger.setLevel(logging.INFO)
     logger.addHandler(handler)
     return directory / 'LG700Tool.log'
+
+
+def report_callback_error(root, kind, error, traceback):
+    logging.getLogger('lg700.app').error('Interface callback failed', exc_info=(kind, error, traceback))
+    message = '界面操作失败\n' + concise_error(error)
+    log_path = getattr(root, '_lg700_log_path', None)
+    if log_path is not None:
+        message += '\n日志：' + str(log_path)
+    messagebox.showerror('钛钽开机动画工具', message, parent=root)
 
 def timestamp():
     return datetime.now(timezone(timedelta(hours=8))).strftime("%Y%m%d_%H%M%S_%f")
@@ -70,7 +173,7 @@ def crop_checkbutton_images(root, style):
 
 
 class App:
-    def __init__(self, root, profile=None):
+    def __init__(self, root, profile=None, *, first_run=False):
         self.root, self.events, self.busy = root, queue.Queue(), False
         self.asset, self.frames, self.preview_index, self.playing = None, [], 0, False
         self.current_media = None
@@ -87,8 +190,9 @@ class App:
         self.preview_size = (480, 360)
         self.operation_stage = '就绪'
         self.log_path = configure_logging()
+        root._lg700_log_path = self.log_path
         self.quality_worker = QualityPreview(self.events)
-        root.title(f"钛钽开机动画工具 v{APP_VERSION} · LG700 / LG600 / LX800")
+        root.title(f"钛钽开机动画工具 v{APP_VERSION} · LG700 / LG600")
         root.geometry("1120x860")
         root.minsize(1080, 840)
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -97,7 +201,7 @@ class App:
         self.main_frame = outer
         outer.pack(fill="both", expand=True)
         MeshHeader(outer, '把喜欢的画面，留在屏幕里',
-            '钛钽开机动画工具  ·  LG700 / LG600 / LX800', version=APP_VERSION).pack(fill='x', pady=(0, 10))
+            '钛钽开机动画工具  ·  LG700 / LG600', version=APP_VERSION).pack(fill='x', pady=(0, 10))
         device_card = RoundedCard(outer, padding=12)
         device_card.pack(fill='x', pady=(0, 10))
         target_row = ttk.Frame(device_card.body)
@@ -211,7 +315,7 @@ class App:
         self.backup_label.pack(anchor='w', pady=(7, 0))
         ResponsiveLayout.activate(root, (1120, 860), self.apply_ui_scale)
         root.after(100, self.poll)
-        self.detect()
+        self.detect(warn_non_v75=first_run)
 
     def apply_ui_scale(self, scale):
         self.main_frame.configure(padx=round(18 * scale), pady=round(16 * scale))
@@ -252,7 +356,7 @@ class App:
         self.stop_preview_timer()
         self.main_frame.pack_forget()
         def return_to_main():
-            self.root.title(f'钛钽开机动画工具 v{APP_VERSION} · LG700 / LG600 / LX800')
+            self.root.title(f'钛钽开机动画工具 v{APP_VERSION} · LG700 / LG600')
             self.root.minsize(*minimum)
             self.root.geometry(geometry)
             self.root.protocol('WM_DELETE_WINDOW', self.close)
@@ -281,10 +385,7 @@ class App:
 
     @staticmethod
     def crop_help_text(profile):
-        panel = ('LX800 为圆形可视区域，480×480 是编码画布。圆外四角不可见；'
-                 '无论是否勾选，重要内容请放在圆内，预览已模拟圆形遮罩。\n\n'
-                 if profile.visible_shape == 'circle' else '')
-        return (panel + '不勾选：按原比例放入编码画布，比例不同时会补黑边。\n\n'
+        return ('不勾选：按原比例放入编码画布，比例不同时会补黑边。\n\n'
                 f'勾选：保持原比例，居中裁剪后铺满 {profile.dimensions} 屏幕，不拉伸画面。\n'
                 '比屏幕比例更宽的素材裁左右，更高的素材裁上下。\n\n'
                 '可能裁掉边缘内容，不会自动识别或跟随人物。切换只更新本地预览和大小，点击写入后才保存到屏幕。')
@@ -292,9 +393,8 @@ class App:
     def apply_profile_view(self, profile):
         self.profile = profile
         self.resize_preview()
-        shape = '圆形可视区域 · ' if profile.visible_shape == 'circle' else ''
         if self.device_identity is None:
-            self.device_text.set(f'{profile.name} · {profile.dimensions} · {shape}{profile.validation_note}')
+            self.device_text.set(f'{profile.name} · {profile.dimensions} · {profile.validation_note}')
         self.fill_help.hover_help.text = self.crop_help_text(profile)
 
     def model_changed(self, event=None):
@@ -443,7 +543,7 @@ class App:
                 action()
             except Exception as error:
                 logging.getLogger('lg700.app').exception('Operation failed at %s', self.operation_stage)
-                message = self.operation_stage + '\n' + str(error)
+                message = self.operation_stage + '\n' + concise_error(error)
                 if self.operation_stage in ('写前备份（尚未发送擦除或写入）', '核验原始备份（尚未发送擦除或写入）',
                                             '暂停离线循环（备份已核验，尚未擦写素材）'):
                     message += '\n本次尚未发送擦除或写入命令，原动画未被本次操作覆盖。'
@@ -473,6 +573,8 @@ class App:
                     self.update_hardware_size(event[3])
                 elif event[0] == 'hardware_size':
                     self.update_hardware_size(event[1])
+                elif event[0] == 'firmware_upgrade':
+                    show_firmware_upgrade(self.root, event[1], event[2])
                 elif event[0] == 'quality_result':
                     self.accept_quality_result(event)
                 elif event[0] == "reset_current":
@@ -532,9 +634,14 @@ class App:
                         self.request_quality_preview(delay=0)
         except queue.Empty:
             pass
-        self.root.after(100, self.poll)
+        except Exception:
+            self.root.report_callback_exception(*sys.exc_info())
+        finally:
+            # A failed preview/event must not strand a completed operation's
+            # queued "done" event with every action button disabled.
+            self.root.after(100, self.poll)
 
-    def detect(self):
+    def detect(self, *, warn_non_v75=False):
         requested = None if self.model_choice.get() == '自动识别' else resolve_profile(self.model_choice.get())
         if requested is not None:
             self.apply_profile_view(requested)
@@ -543,8 +650,10 @@ class App:
             self.events.put(("reset_current",))
             self.stage('识别设备')
             with LG700(profile=requested) as device:
-                meta = device.metadata(1)
                 profile = device.profile
+                if warn_non_v75 and device.revision != RECOMMENDED_FIRMWARE:
+                    self.events.put(('firmware_upgrade', profile.name, device.revision))
+                meta = device.metadata(1)
                 model = device.info.get('product_string', profile.name).strip()
                 self.events.put(("device", model, device.revision, meta['size'], profile,
                                  connection_identity(device.info)))
@@ -564,7 +673,9 @@ class App:
                     self.note('硬件首帧已读取（只读，未转码）', 100)
                 except (OSError, ValueError) as error:
                     self.events.put(('media_missing',))
-                    self.note('设备已连接，首帧预览未取得：' + str(error) + '；没有使用官方软件配置替代。')
+                    logging.getLogger('lg700.app').exception('Hardware first-frame read failed')
+                    self.events.put(('error', '读取硬件首帧失败（只读）\n' + concise_error(error)
+                                     + '\n日志：' + str(self.log_path)))
         self.run(job)
 
     def backup(self):
@@ -645,6 +756,7 @@ class App:
         profile, identity = self.target_profile(), self.device_identity
         self.events.put(('custom_source', source))
         def job():
+            self.stage('转换并校验本地素材（尚未连接设备或擦写）')
             dest = data_home() / "Generated" / (timestamp() + ".lg700boot")
             data = convert(source, dest, quality, self.note, fill_screen=fill_screen, profile=profile)
             self.events.put(('prepared_asset', quality, data))
@@ -723,46 +835,99 @@ class App:
         profile, identity = self.target_profile(), self.device_identity
         try:
             with self.vendor_session(), LG700(profile=profile, expected_identity=identity) as device:
-                path = str(original_directory(device))
-        except Exception:
-            path = filedialog.askdirectory(title="选择包含 manifest.json 的钛钽原始备份目录",
-                                           initialdir=str(data_home() / "Backups"))
-        if not path:
-            return
-        try:
-            original = {s: restore_file(path, s, profile=profile) for s in (0, 1)}
+                identity = connection_identity(device.info)
         except Exception as error:
-            messagebox.showerror("恢复失败", str(error), parent=self.root)
+            show_error(self.root, "无法连接目标屏幕", error)
             return
+        converted = False
+        try:
+            path = original_directory(device)
+            manifest = restore_manifest(path, device)
+        except BackupDeviceMismatch as error:
+            target = f'{profile.name} REV {device.revision:04X}'
+            if not confirm_backup_conversion(self.root, error, target):
+                return
+            converted = True
+            manifest = None
+        except FileNotFoundError as error:
+            self.note(f'自动选择的原始备份不可用：{error}。请选择备份或导入包目录。')
+            path = filedialog.askdirectory(
+                title=f"选择包含 manifest.json 的备份或 REV {device.revision:04X} 导入包目录",
+                initialdir=str(data_home() / "Backups"), parent=self.root)
+            if not path:
+                return
+            try:
+                manifest = restore_manifest(path, device, allow_import=True)
+            except Exception as error:
+                show_error(self.root, "读取所选备份失败", error)
+                return
+        except Exception as error:
+            show_error(self.root, "读取原始备份失败", error)
+            return
+        imported = converted or manifest.get('kind') == FACTORY_IMPORT
+        original = None
+        if not converted:
+            try:
+                original = {s: restore_file(path, s, profile=profile) for s in (0, 1)}
+            except Exception as error:
+                show_error(self.root, "校验恢复素材失败", error)
+                return
         def job():
-            self.stage('恢复前备份')
+            self.stage('连接目标屏幕（尚未擦写）')
             with self.vendor_session(), LG700(profile=profile, expected_identity=identity) as device:
-                self.stage('恢复前暂停离线循环（恢复备份已核验）')
-                device.set_offline_loop(False, path)
-                try:
-                    directory = new_snapshot(device, "before_restore")
-                    device.backup(directory, lambda name, p: self.note(f"恢复前备份 {name}：{p:.0%}", p * 100))
-                except (OSError, ValueError) as error:
-                    self.note("当前素材无法完整备份，将用现有原厂备份恢复：" + str(error))
-                self.stage('恢复素材并完整读回校验')
+                if converted:
+                    self.stage('检查并转换原始备份（尚未擦写）')
+                    assets = convert_original_assets(path, device)
+                    self.note('LG700 REV 0067 原厂素材已通过 REV 0075 兼容校验')
+                else:
+                    self.stage('校验恢复素材（尚未擦写）')
+                    if restore_manifest(path, device, allow_import=imported) != manifest:
+                        raise ValueError('恢复清单已更改，请重新选择目录')
+                    assets = original
+                self.stage('恢复前备份')
+                directory = new_snapshot(device, "before_restore")
+                progress = lambda name, p: self.note(f"恢复前备份 {name}：{p:.0%}", p * 100)
+                if imported:
+                    # Preserve the pre-existing conversion/import policy.
+                    cached = cached_safety_backup(device)
+                    if cached is not None:
+                        self.stage('暂停离线循环（已核验同设备备份）')
+                        device.set_offline_loop(False, cached)
+                    self.stage('完整备份当前素材（尚未擦写）')
+                    device.backup(directory, progress)
+                    if cached is None:
+                        self.stage('暂停离线循环（当前素材已备份）')
+                        device.set_offline_loop(False, directory)
+                    self.note("当前素材已完整备份：" + str(directory))
+                    safety_backup = directory
+                else:
+                    # Recovery uses the verified original, including when
+                    # the current on-device assets cannot be backed up.
+                    self.stage('恢复前暂停离线循环（恢复备份已核验）')
+                    device.set_offline_loop(False, path)
+                    try:
+                        device.backup(directory, progress)
+                        self.note("当前素材已完整备份：" + str(directory))
+                    except (OSError, ValueError) as error:
+                        logging.getLogger('lg700.app').warning('Current assets backup failed before recovery', exc_info=True)
+                        self.note('当前素材无法完整备份，将用已核验的原厂备份恢复：'
+                                  + concise_error(error))
+                    safety_backup = path
                 for selector in (1, 0):
+                    asset_name = '开机动画' if selector == 1 else '待机图'
+                    self.stage(f'恢复{asset_name}并完整读回校验')
                     def update(p, selector=selector):
                         fraction = p - 1 if p > 1 else p
                         self.note(f"恢复素材 {selector}：{fraction:.0%}", fraction * 100)
-                    device.write_asset(selector, original[selector], path,
-                                       update, recovery=True)
-                self.events.put(('hardware_size', len(original[1])))
-                self.stage('等待恢复的 mode0 待机记录提交完成')
+                    device.write_asset(selector, assets[selector], safety_backup,
+                                       update, recovery=not imported)
+                self.events.put(('hardware_size', len(assets[1])))
+                self.stage('等待原始待机图提交完成')
                 time.sleep(3)
                 settled, _ = device.read_asset(0)
-                if settled != original[0]:
-                    raise OSError('恢复的待机首帧在提交等待后已回退；未发送 mode1 命令')
-                # Restore mode 1 so the backed-up factory boot animation is
-                # what the screen plays after power-on. Mode 0 hands control
-                # back to the vendor's online sender and can show its cached
-                # image instead of the restored boot package.
-                device.set_offline_loop(True, path)
-            self.note("原始动画和待机图恢复完成，读回校验通过；已自动切换 mode1 离线循环。请关机开机验证。")
+                if settled != assets[0]:
+                    raise OSError('原始待机图在提交等待后读回不一致')
+            self.note("原始动画和待机图已恢复并通过读回校验；恢复前已发送停止离线循环的命令（mode0），设备不提供模式读回。")
         self.run(job)
 
     def close(self):
@@ -777,7 +942,7 @@ def main():
     if sys.platform == 'win32':
         import ctypes
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Local.Tools.LG700BootTool")
-    parser = argparse.ArgumentParser(description="TCOMAS LG700 / LG600 / LX800 boot animation tool")
+    parser = argparse.ArgumentParser(description="TCOMAS LG700 / LG600 boot animation tool")
     parser.add_argument('--model', choices=('auto', *(p.key for p in PROFILES)), default='auto',
                         help='select a model; auto requires exactly one supported display')
     parser.add_argument("--inspect", action="store_true", help="read-only device probe, writes JSON to stdout")
@@ -799,7 +964,7 @@ def main():
         except (OSError, RuntimeError, ValueError) as error:
             # A busy device is a normal diagnostic result. Do not open the
             # frozen executable's fatal-exception dialog over another writer.
-            result = {'error': str(error), 'model_requested': args.model, 'read_only': True}
+            result = {'error': describe_error(error), 'model_requested': args.model, 'read_only': True}
             status = 2
         encoded = json.dumps(result, indent=2, ensure_ascii=False)
         if args.output:
@@ -809,13 +974,19 @@ def main():
         return status
     else:
         root = tk.Tk()
-        if needs_startup_notice():
-            def start_after_read():
-                remember_notice_read()
+        root.report_callback_exception = lambda *args: report_callback_error(root, *args)
+        try:
+            if needs_startup_notice():
+                def start_after_read():
+                    remember_notice_read()
+                    App(root, profile=profile, first_run=True)
+                StartupNotice(root, on_read=start_after_read, version=APP_VERSION)
+            else:
                 App(root, profile=profile)
-            StartupNotice(root, on_read=start_after_read, version=APP_VERSION)
-        else:
-            App(root, profile=profile)
+        except Exception:
+            root.report_callback_exception(*sys.exc_info())
+            root.destroy()
+            return 2
         root.mainloop()
 
 

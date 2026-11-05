@@ -1,4 +1,4 @@
-"""TCOMAS LG700 / LG600 / LX800 native boot-asset protocol, Windows HID.
+"""TCOMAS LG700 / LG600 native boot-asset protocol, Windows HID.
 
 Reverse engineered from the owner's device (REV 0067) and vendor V75.
 This module never updates executable firmware. It exposes asset commands and
@@ -90,8 +90,22 @@ def pack_boot(jpegs: list[bytes]) -> bytes:
     return header + b"\0" + table + body + terminal
 
 
-def unpack_boot(data: bytes, inspect_jpeg=True, *, profile=None) -> list[bytes]:
+def validate_jpeg(data, profile, label):
     from PIL import Image
+    if not data.startswith(b'\xff\xd8') or not data.endswith(b'\xff\xd9'):
+        raise ValueError(f'{label} JPEG 缺少起始或结束标记')
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            if image.format != 'JPEG' or image.size != profile.size or image.info.get('progressive'):
+                raise ValueError(f'{label}必须是 {profile.dimensions} 非渐进 JPEG；'
+                                 f'收到 {image.format} {image.width}×{image.height}，'
+                                 f'渐进编码={bool(image.info.get("progressive"))}')
+            image.load()
+    except (OSError, Image.DecompressionBombError) as error:
+        raise ValueError(f'{label} JPEG 解码失败') from error
+
+
+def unpack_boot(data: bytes, inspect_jpeg=True, *, profile=None) -> list[bytes]:
     profile = resolve_profile(profile)
     if len(data) < 33:
         raise ValueError("动画包太短")
@@ -103,6 +117,8 @@ def unpack_boot(data: bytes, inspect_jpeg=True, *, profile=None) -> list[bytes]:
         raise ValueError("不是支持的原厂动画格式")
     if size != len(data) - 16 or table_size != count * 16:
         raise ValueError("动画包长度或帧表错误")
+    if prefix != 1 or data[16] != 0:
+        raise ValueError(f'动画目录前缀无效：长度应为 1，收到 {prefix}，且前缀必须为 0')
     table_start = 16 + prefix
     table_end = table_start + table_size
     if table_end > len(data):
@@ -126,10 +142,7 @@ def unpack_boot(data: bytes, inspect_jpeg=True, *, profile=None) -> list[bytes]:
         if length > MAX_JPEG:
             raise ValueError(f"第 {n} 帧过大")
         if inspect_jpeg:
-            with Image.open(io.BytesIO(jpeg)) as im:
-                if im.size != profile.size or im.info.get("progressive"):
-                    raise ValueError(f"第 {n} 帧必须是 {profile.dimensions} 非渐进 JPEG")
-                im.verify()
+            validate_jpeg(jpeg, profile, f'开机动画第 {n + 1} 帧')
         frames.append(jpeg)
         previous_end = end
     if data[previous_end:] != struct.pack("<IIIHH", 0, 0, 0, 0, 0x1000):
@@ -151,14 +164,29 @@ def is_empty_boot(meta, profile=None):
 
 
 def _read_backup_asset(directory, selector, saved, profile):
-    data = (Path(directory) / saved['file']).read_bytes()
+    directory = Path(directory).resolve()
+    file = (directory / saved['file']).resolve()
+    # Packaged Windows apps may redirect a file into LocalCache while
+    # resolving its parent directory keeps the logical LocalAppData path.
+    # Compare directory identities as well as names before rejecting it.
+    if (not file.is_relative_to(directory)
+            and not any(directory.samefile(parent) for parent in file.parents)):
+        raise ValueError(f"备份文件路径超出所选目录：{saved['file']}")
+    data = file.read_bytes()
     if sha256(data) != saved['sha256']:
-        raise ValueError('素材备份 SHA-256 校验失败')
+        raise ValueError(f"素材备份 SHA-256 校验失败：{saved['file']}")
     if saved.get('empty') is True:
         if selector != 1 or data or not is_empty_boot(saved, profile):
             raise ValueError('备份的空动画槽记录无效')
-    elif not data:
+    if 'size' in saved and saved['size'] != len(data):
+        raise ValueError(f"备份文件长度与清单不一致：{saved['file']}，"
+                         f"清单 {saved['size']} 字节，文件 {len(data)} 字节")
+    if 'selector' in saved and saved['selector'] != selector:
+        raise ValueError(f"备份素材区域不匹配：{saved['file']}，应为 {selector}，收到 {saved['selector']}")
+    if not data and saved.get('empty') is not True:
         raise ValueError('备份文件为空，且没有有效的空动画槽记录')
+    if data:
+        validate_asset(selector, data, profile=profile)
     return data
 
 
@@ -173,11 +201,7 @@ def validate_asset(selector, data, *, profile=None):
     if selector == 1:
         unpack_boot(data, profile=profile)
     else:
-        from PIL import Image
-        with Image.open(io.BytesIO(data)) as im:
-            if im.format != "JPEG" or im.size != profile.size or im.info.get("progressive"):
-                raise ValueError(f"待机图必须是 {profile.dimensions} 非渐进 JPEG")
-            im.verify()
+        validate_jpeg(data, profile, '待机图')
 
 
 def encode_reports(op, payload=b""):
@@ -207,7 +231,7 @@ class LG700:
         devices = list({connection_identity(d): d for d in devices}.values())
         if len(devices) != 1:
             raise RuntimeError(f"需要恰好一台目标屏幕，检测到 {len(devices)} 台；"
-                               "可选择型号后重新识别，或仅连接一台 LG700 / LG600 / LX800")
+                               "可选择型号后重新识别，或仅连接一台 LG700 / LG600")
         self.info = devices[0]
         self._profile = profile_for_info(self.info)
         if expected_identity is not None and connection_identity(self.info) != expected_identity:
@@ -304,9 +328,11 @@ class LG700:
                 raise ValueError('离线播放模式只允许 0 或 1')
         elif op not in (0x0A, 0x0B, 0x0C, 0x0D, 0x87):
             raise ValueError("该工具不发送此类命令")
-        for report in encode_reports(op, payload):
-            if self.hid.write(report) != 441:
-                raise OSError("HID 发送长度异常")
+        for seq, report in enumerate(encode_reports(op, payload)):
+            sent = self.hid.write(report)
+            if sent != 441:
+                raise OSError(f'命令 0x{op:02X} 第 {seq + 1} 个 HID 报告发送长度异常：'
+                              f'应为 441 字节，发送 {sent} 字节；结果未知，未自动重发')
         if op == 0x1E:
             # Vendor dispatch schedules persistence and returns without an ACK.
             # Waiting here invents a timeout, even when the command succeeded.
@@ -320,10 +346,12 @@ class LG700:
             # later. Never invent a missing header or accept a partial response.
             wait_ms = remaining if last_unexpected is None else min(remaining, RESYNC_QUIET_MS)
             raw = bytes(self.hid.read(440, wait_ms))
-            if len(raw) != 440:
+            if not raw:
                 detail = f'；最后收到旧包头 0x{last_unexpected:08X}' if last_unexpected is not None else ''
                 error = ResponseSyncError if last_unexpected is not None else TimeoutError
                 raise error(f"命令 0x{op:02X} 等待响应超时{detail}")
+            if len(raw) != 440:
+                raise ResponseSyncError(f'命令 0x{op:02X} 响应长度错误：应为 440 字节，收到 {len(raw)} 字节')
             head = struct.unpack_from("<I", raw)[0]
             if head & 0xFF == op and head & 0x80000000:
                 break
@@ -333,15 +361,21 @@ class LG700:
                 raise ResponseSyncError("收到其他命令响应，请退出原厂软件后重试")
         count = (head & 0x7FFFFFFF) >> 8
         if not 1 <= count <= MAX_PACKETS:
-            raise ResponseSyncError("设备返回无效包数")
+            raise ResponseSyncError(f'命令 0x{op:02X} 设备返回无效包数：{count}；允许 1–{MAX_PACKETS}')
         if op != 0x0D and count != 1:
-            raise ResponseSyncError('设备返回的应答包数与命令不符')
+            raise ResponseSyncError(f'命令 0x{op:02X} 设备返回的应答包数与命令不符：应为 1，收到 {count}')
         chunks = [raw[4:]]
         for seq in range(1, count):
             remaining = max(1, int((deadline - time.monotonic()) * 1000))
             raw = bytes(self.hid.read(440, remaining))
-            if len(raw) != 440 or struct.unpack_from("<I", raw)[0] != (seq << 8 | op):
-                raise ResponseSyncError(f"响应包顺序错误：{seq}/{count}")
+            expected = seq << 8 | op
+            if len(raw) != 440:
+                raise ResponseSyncError(f'命令 0x{op:02X} 第 {seq + 1}/{count} 个响应包长度错误：'
+                                        f'应为 440 字节，收到 {len(raw)} 字节')
+            actual = struct.unpack_from('<I', raw)[0]
+            if actual != expected:
+                raise ResponseSyncError(f'命令 0x{op:02X} 响应包顺序错误：{seq + 1}/{count}；'
+                                        f'应为 0x{expected:08X}，收到 0x{actual:08X}')
             if time.monotonic() >= deadline:
                 raise ResponseSyncError(f'命令 0x{op:02X} 响应超过总等待时间')
             chunks.append(raw[4:])
@@ -380,6 +414,7 @@ class LG700:
         import hid
         expected_serial = self.info.get('serial_number')
         expected_revision = self.revision
+        last_error = None
         if self.hid is not None:
             try:
                 self.hid.close()
@@ -400,12 +435,13 @@ class LG700:
                         raise RuntimeError('重新连接后固件版本变化，已停止')
                     self.info = matches[0]
                     return
-                except (OSError, TimeoutError):
+                except (OSError, TimeoutError) as error:
+                    last_error = error
                     if self.hid is not None:
                         self.hid.close()
                         self.hid = None
             time.sleep(.25)
-        raise TimeoutError('屏幕尚未重新连接；未重复发送模式命令')
+        raise TimeoutError(f'屏幕尚未重新连接（等待 {timeout:g} 秒）；未重复发送模式命令') from last_error
 
     def set_offline_loop(self, enabled, backup_directory):
         """Set native looping; a one-frame boot package stays visually static.
@@ -477,10 +513,12 @@ class LG700:
             meta['empty'] = True
             return meta
         if sel != selector or not 0 < size <= capacity(selector, self.profile):
-            raise OSError(f"素材元数据异常：selector={sel}, size={size}")
+            raise OSError(f"素材元数据异常：请求 selector={selector}，返回 selector={sel}, size={size}；"
+                          f"允许 1–{capacity(selector, self.profile)} 字节")
         begin, end = self.profile.regions[selector]
         if active < begin or active >= end or not active < next_record <= end:
-            raise OSError(f"素材地址与已知 {self.profile.name} 存储布局不符，已停止")
+            raise OSError(f'素材地址与已知 {self.profile.name} 存储布局不符，已停止：selector={selector}，'
+                          f'active=0x{active:X}, next=0x{next_record:X}，分区=0x{begin:X}–0x{end:X}')
         return meta
 
     def read_boot_first_frame(self, progress=lambda p: None):
@@ -533,7 +571,7 @@ class LG700:
             file.write_bytes(data)
             # Verify the persisted backup before exposing it to the write operation.
             if file.read_bytes() != data:
-                raise OSError("备份文件写入校验失败")
+                raise OSError(f'备份文件写入校验失败：{file}，目标 {len(data)} 字节')
             meta.update(file=file.name, sha256=sha256(data))
             manifest["assets"][name] = meta
         (directory / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf8")
@@ -541,7 +579,10 @@ class LG700:
 
     def write_asset(self, selector, data, backup_directory, progress=lambda p: None,
                     recovery=False):
-        """Only call after backup(); commit is sent exactly once, no blind retries."""
+        """Normal writes need a fresh backup; recovery uses a verified source.
+
+        Commit is sent exactly once, with no blind retries.
+        """
         self.last_write_skipped = False
         self.last_verification_reconnected = False
         validate_asset(selector, data, profile=self.profile)
@@ -557,8 +598,10 @@ class LG700:
             raise ValueError('原始开机动画为空，无法恢复不存在的动画；请写入本地图片或视频')
         if not recovery:
             current_meta = self.metadata(selector)
-            if current_meta["size"] != saved["size"]:
-                raise ValueError("备份后素材发生变化，请重新备份")
+            for key in ('size', 'active_record', 'next_record'):
+                if key in saved and current_meta[key] != saved[key]:
+                    raise ValueError(f'备份后素材发生变化，请重新备份：selector={selector}，'
+                                     f'{key} 从 {saved[key]} 变为 {current_meta[key]}')
             if previous == data:
                 # The backup suggests no change. Still read the entire live
                 # asset again: size/cursors alone cannot prove byte equality.
@@ -575,7 +618,8 @@ class LG700:
             raise OSError(f'开始擦写失败：selector={selector}，目标 {len(data):,} 字节；结果未知，未自动重发：{error}') from error
         which, accepted = struct.unpack_from("<Ii", ack)
         if which != selector or accepted != len(data):
-            raise OSError("设备拒绝开始写入，未发送素材")
+            raise OSError(f'设备拒绝开始写入：请求 selector={selector}, size={len(data)}；'
+                          f'返回 selector={which}, size={accepted}。未发送素材')
         offset = 0
         while offset < len(data):
             chunk = data[offset:offset + WRITE_CHUNK]
@@ -596,12 +640,14 @@ class LG700:
                               f'{state}，未自动重发。{error}') from error
             off, length, status = struct.unpack_from("<IIi", ack)
             if off != offset or length != len(chunk) or status < 0:
-                raise OSError(f"写入失败：offset={offset}, status={status}。保留备份，可用恢复功能。")
+                raise OSError(f'写入响应错误：selector={selector}，请求 offset={offset}, length={len(chunk)}；'
+                              f'返回 offset={off}, length={length}, status={status}。')
             offset += len(chunk)
             progress(offset / len(data))
         actual = self._read_for_verification(selector, progress)
         if actual != data:
-            raise OSError("写后读回内容不一致，请使用备份恢复")
+            raise OSError(f'写后读回内容不一致：selector={selector}，目标 {len(data):,} 字节，'
+                          f'读回 {len(actual):,} 字节，SHA-256 分别为 {sha256(data)} 和 {sha256(actual)}')
         return sha256(actual)
 
     def _read_for_verification(self, selector, progress):
@@ -628,5 +674,4 @@ def restore_file(directory, selector, *, profile=None, allow_empty=False):
         if not allow_empty:
             raise ValueError('此备份中的原始开机动画为空，没有可恢复的动画；请写入本地图片或视频')
         return data
-    validate_asset(selector, data, profile=selected)
     return data

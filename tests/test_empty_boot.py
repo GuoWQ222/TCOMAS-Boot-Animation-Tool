@@ -194,7 +194,7 @@ class EmptyBootTests(unittest.TestCase):
 
     def test_failed_standby_validation_still_blocks_backup(self):
         self.device.assets[0] = b'not a JPEG'
-        with self.assertRaises(OSError):
+        with self.assertRaisesRegex(ValueError, '待机图 JPEG 缺少起始或结束标记'):
             self.device.backup(self.folder / 'invalid')
         self.assertFalse((self.folder / 'invalid' / 'manifest.json').exists())
         self.assert_no_changes()

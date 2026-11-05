@@ -3,12 +3,10 @@
 The currently displayed live USB frame is not read here. No full animation
 readback, write/commit or playback-mode change is performed.
 """
-import io
 import struct
 import time
-from PIL import Image
 from lg700_core import (READ_CHUNK, MAX_JPEG, BOOT_ROOT_TAGS, BOOT_FRAME_FLAGS,
-                        checksum_record, sha256, is_empty_boot)
+                        checksum_record, sha256, is_empty_boot, validate_jpeg)
 
 
 def read_boot_first_frame(device, progress=lambda fraction: None):
@@ -64,14 +62,7 @@ def read_boot_first_frame(device, progress=lambda fraction: None):
     if payload[name_length - 1] != 0:
         raise ValueError('硬件首帧文件名记录损坏')
     jpeg = payload[name_length:]
-    if not jpeg.startswith(b'\xff\xd8') or not jpeg.endswith(b'\xff\xd9'):
-        raise ValueError('硬件首帧 JPEG 不完整')
-    with Image.open(io.BytesIO(jpeg)) as image:
-        if image.format != 'JPEG' or image.size != device.profile.size or image.info.get('progressive'):
-            raise ValueError(f'硬件首帧必须是 {device.profile.dimensions} 非渐进 JPEG')
-        image.verify()
-    with Image.open(io.BytesIO(jpeg)) as image:
-        image.load()
+    validate_jpeg(jpeg, device.profile, '硬件首帧')
     progress(.6)
     # Firmware playback can race reads. Two equal small snapshots and stable
     # directory/metadata are required. Failure never falls back to vendor data.

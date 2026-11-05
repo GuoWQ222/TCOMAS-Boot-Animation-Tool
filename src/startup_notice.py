@@ -1,7 +1,9 @@
 """A read-first landing page with no device or process-control side effects."""
 import re
+import logging
 import tkinter as tk
 from tkinter import ttk, messagebox
+from error_details import concise_error
 from ui_theme import configure_theme, MeshHeader, RoundedCard, ResponsiveLayout, theme_font, PAGE, PRIMARY, MUTED
 
 
@@ -15,7 +17,7 @@ NOTICES = (
      '备份、写入和读回校验完成前，请勿断电、拔出 USB 或关闭本工具。\n'
      '如果操作报错，请退出本程序并关机断电（拔掉电源再插上），再开机重试。'),
     ('确认型号与验证范围',
-     '支持 LG600、LG700、LX800\n'
+     '支持 LG600、LG700\n'
      'LG700 经过实机验证'),
     ('留意素材容量并保留备份',
      '容量按转换后的动画包计算，超限时请降低画质或缩短视频。'
@@ -55,7 +57,7 @@ class StartupNotice:
         self.frame = tk.Frame(root, background=PAGE, padx=22, pady=20)
         self.frame.pack(fill='both', expand=True)
         MeshHeader(self.frame, '开始之前，先了解这几件事',
-            '钛钽开机动画工具  ·  LG700 / LG600 / LX800',
+            '钛钽开机动画工具  ·  LG700 / LG600',
             eyebrow='TCOMAS  /  提醒事项', version=version).pack(fill='x', pady=(0, 15))
         footer = tk.Frame(self.frame, background=PAGE)
         footer.pack(side='bottom', fill='x', pady=(10, 0))
@@ -112,6 +114,7 @@ class StartupNotice:
             self._entered = False
             self.frame.pack(fill='both', expand=True)
             self.read_button.configure(state='normal')
-            messagebox.showerror('无法打开主界面', str(error), parent=self.root)
+            logging.getLogger('lg700.app').exception('Main window initialization failed')
+            messagebox.showerror('无法打开主界面', concise_error(error), parent=self.root)
             return
         self.frame.destroy()

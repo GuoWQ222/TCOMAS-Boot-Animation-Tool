@@ -168,6 +168,20 @@ class DetectionTests(unittest.TestCase):
         device.set_offline_loop.assert_not_called()
         device.read_asset.assert_not_called()
 
+    def test_firmware_warning_is_limited_to_non_v75_on_first_scan(self):
+        for first_run, revision, expected in ((True, 0x67, True), (True, 0x76, True),
+                                              (True, 0x75, False), (False, 0x67, False)):
+            with self.subTest(first_run=first_run, revision=revision):
+                app, device = self.app(), self.device()
+                device.revision = revision
+                device.read_boot_first_frame.side_effect = OSError('no usable first frame')
+                with patch('lg700_tool.LG700', return_value=device):
+                    App.detect(app, warn_non_v75=first_run)
+                events = list(app.events.queue)
+                self.assertEqual(('firmware_upgrade', 'LG700', revision) in events, expected)
+                self.assertIn(('media_missing',), events)
+                device.write_asset.assert_not_called()
+
     def test_first_frame_preview_keeps_full_hardware_size_without_reencoding(self):
         app = self.app()
         snapshot = self.device().read_boot_first_frame.return_value

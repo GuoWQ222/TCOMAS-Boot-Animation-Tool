@@ -5,7 +5,8 @@ import tempfile
 import unittest
 import struct
 from unittest.mock import Mock, patch
-from lg700_core import LG700, sha256
+from lg700_core import LG700, sha256, unpack_boot
+from sample_assets import sample_boot
 
 
 class PlaybackModeTests(unittest.TestCase):
@@ -14,7 +15,8 @@ class PlaybackModeTests(unittest.TestCase):
             directory = Path(folder)
             assets = {}
             for name in ('boot', 'standby'):
-                data = (name + ' saved').encode()
+                boot = sample_boot()
+                data = boot if name == 'boot' else unpack_boot(boot)[0]
                 (directory / (name + '.bin')).write_bytes(data)
                 assets[name] = {'file': name + '.bin', 'sha256': sha256(data)}
             (directory / 'manifest.json').write_text(json.dumps(
@@ -56,7 +58,9 @@ class PlaybackModeTests(unittest.TestCase):
             directory=Path(folder)
             assets={}
             for name in ('boot','standby'):
-                data=b'backup';(directory/(name+'.bin')).write_bytes(data)
+                boot=sample_boot()
+                data=boot if name=='boot' else unpack_boot(boot)[0]
+                (directory/(name+'.bin')).write_bytes(data)
                 assets[name]={'file':name+'.bin','sha256':sha256(data)}
             (directory/'manifest.json').write_text(json.dumps({'device':{'revision':'0067'},'assets':assets}))
             device=object.__new__(LG700);device.revision=0x67

@@ -15,8 +15,9 @@ import backup_store
 import convert_media
 import current_media
 import lg700_core
-from device_profiles import (PROFILES, LG700_PROFILE, LG600_PROFILE, LX800_PROFILE,
-    connection_identity, backup_device_key, check_manifest_device, manifest_profile)
+from device_profiles import (PROFILES, LG700_PROFILE, LG600_PROFILE,
+    connection_identity, backup_device_key, check_manifest_device, manifest_profile,
+    resolve_profile, profile_for_info)
 from lg700_core import LG700, pack_boot, unpack_boot, validate_asset, sha256, restore_file
 from lg700_tool import App
 from quality_preview import QualityPreview
@@ -63,27 +64,27 @@ class DeviceProfileTests(unittest.TestCase):
                     opened.assert_called_once_with(info(profile)['path'])
 
     def test_ambiguous_devices_never_open_until_a_model_is_selected(self):
-        opened, _ = self.usb([info(LG600_PROFILE), info(LX800_PROFILE)])
+        opened, _ = self.usb([info(LG600_PROFILE), info(LG700_PROFILE)])
         with self.assertRaisesRegex(RuntimeError, '2 台'):
             LG700()
         opened.assert_not_called()
-        with LG700(profile=LX800_PROFILE) as device:
-            self.assertEqual(device.profile, LX800_PROFILE)
+        with LG700(profile=LG700_PROFILE) as device:
+            self.assertEqual(device.profile, LG700_PROFILE)
 
     def test_two_devices_of_one_model_still_require_disambiguation(self):
-        opened, _ = self.usb([info(LX800_PROFILE, 'a'), info(LX800_PROFILE, 'b')])
+        opened, _ = self.usb([info(LG600_PROFILE, 'a'), info(LG600_PROFILE, 'b')])
         with self.assertRaisesRegex(RuntimeError, '2 台'):
-            LG700(profile=LX800_PROFILE)
+            LG700(profile=LG600_PROFILE)
         opened.assert_not_called()
 
     def test_changed_target_is_rejected_before_opening_usb(self):
-        opened, _ = self.usb([info(LX800_PROFILE, 'new')])
+        opened, _ = self.usb([info(LG600_PROFILE, 'new')])
         with self.assertRaisesRegex(RuntimeError, '目标设备已变化'):
-            LG700(profile=LX800_PROFILE, expected_identity=connection_identity(info(LX800_PROFILE, 'old')))
+            LG700(profile=LG600_PROFILE, expected_identity=connection_identity(info(LG600_PROFILE, 'old')))
         opened.assert_not_called()
 
     def test_reconnect_keeps_model_serial_and_revision(self):
-        for profile in (LG600_PROFILE, LX800_PROFILE):
+        for profile in PROFILES:
             with self.subTest(model=profile.key):
                 opened, hid = self.usb([info(profile)])
                 device = object.__new__(LG700)
@@ -94,7 +95,7 @@ class DeviceProfileTests(unittest.TestCase):
                 opened.assert_called_once_with(info(profile)['path'])
 
     def test_unknown_new_model_revision_cannot_write_or_change_mode(self):
-        for profile in (LG600_PROFILE, LX800_PROFILE):
+        for profile in (LG600_PROFILE,):
             device = object.__new__(LG700)
             device._profile, device.revision = profile, 0x67
             device.query = Mock()
@@ -120,45 +121,43 @@ class DeviceProfileTests(unittest.TestCase):
                             self.assertGreater(max(image.getpixel((10, 10))), 30)
                     validate_asset(0, frame, profile=profile)
         with self.assertRaisesRegex(ValueError, '640×480'):
-            validate_asset(1, media(LX800_PROFILE), profile=LG700_PROFILE)
+            validate_asset(1, media(LG600_PROFILE), profile=LG700_PROFILE)
         with self.assertRaisesRegex(ValueError, '480×480'):
-            validate_asset(1, media(LG700_PROFILE), profile=LX800_PROFILE)
+            validate_asset(1, media(LG700_PROFILE), profile=LG600_PROFILE)
 
     def test_conversion_cache_and_worker_include_model(self):
         source = self.folder / 'square.png'
         Image.new('RGB', (480, 480)).save(source)
         with patch.object(convert_media, 'build_asset', wraps=convert_media.build_asset) as build:
-            for profile in (LG600_PROFILE, LX800_PROFILE, LG700_PROFILE):
+            for profile in PROFILES:
                 convert_media.cached_build_asset(source, profile=profile)
                 convert_media.cached_build_asset(source, profile=profile)
-            self.assertEqual(build.call_count, 3)
+            self.assertEqual(build.call_count, 2)
         events = queue.Queue()
         worker = QualityPreview(events)
         self.addCleanup(worker.close)
-        worker.request(1, source, 75, False, LX800_PROFILE)
+        worker.request(1, source, 75, False, LG600_PROFILE)
         result = events.get(timeout=10)
-        self.assertEqual(result[7], 'lx800')
+        self.assertEqual(result[7], 'lg600')
         self.assertIsNone(result[6])
-        unpack_boot(result[5], profile=LX800_PROFILE)
+        unpack_boot(result[5], profile=LG600_PROFILE)
 
     def test_gui_drops_a_preview_from_previous_model(self):
         app = Mock(busy=False, preview_generation=2, preview_source='a.mp4')
-        app.target_profile.return_value = LX800_PROFILE
+        app.target_profile.return_value = LG700_PROFILE
         app.selected_quality.return_value = 75
         app.fill_screen.get.return_value = False
         App.accept_quality_result(app, ('quality_result', 2, 'a.mp4', 75, False, b'old', None, 'lg600'))
         app.apply_preview_data.assert_not_called()
 
-    def test_round_panel_preview_masks_corners_without_changing_encoded_data(self):
-        data = media(LX800_PROFILE)
-        before = sha256(data)
-        jpeg = unpack_boot(data, profile=LX800_PROFILE)[0]
-        circular = preview_frame(jpeg, LX800_PROFILE, (360, 360))
-        square = preview_frame(jpeg, LG600_PROFILE, (360, 360))
-        self.assertEqual(circular.getpixel((0, 0)), (21, 27, 36))
-        self.assertNotEqual(square.getpixel((0, 0)), (21, 27, 36))
-        self.assertEqual(circular.getpixel((180, 180)), square.getpixel((180, 180)))
-        self.assertEqual(sha256(data), before)
+    def test_supported_previews_keep_corners_and_do_not_change_encoded_data(self):
+        for profile in PROFILES:
+            data = media(profile)
+            before = sha256(data)
+            jpeg = unpack_boot(data, profile=profile)[0]
+            preview = preview_frame(jpeg, profile, (360, 360))
+            self.assertEqual(preview.getpixel((0, 0)), preview.getpixel((180, 180)))
+            self.assertEqual(sha256(data), before)
 
     def test_backup_paths_separate_models_and_preserve_lg700_path(self):
         paths = []
@@ -171,7 +170,7 @@ class DeviceProfileTests(unittest.TestCase):
                     self.assertEqual(path.parent, self.folder / 'Backups')
                 else:
                     self.assertEqual(path.parent.name, profile.name)
-        self.assertEqual(len(set(paths)), 3)
+        self.assertEqual(len(set(paths)), 2)
 
     def manifest(self, profile):
         return {'device': {'model': profile.key, 'pid': f'{profile.pid:04X}',
@@ -181,10 +180,10 @@ class DeviceProfileTests(unittest.TestCase):
     def test_manifest_blocks_cross_model_and_cross_device_restore(self):
         manifest = self.manifest(LG600_PROFILE)
         with self.assertRaisesRegex(ValueError, '跨型号'):
-            check_manifest_device(manifest, LX800_PROFILE)
+            check_manifest_device(manifest, LG700_PROFILE)
         with self.assertRaisesRegex(ValueError, '不属于当前设备'):
             check_manifest_device(manifest, LG600_PROFILE, info=info(LG600_PROFILE, 'other'))
-        manifest['device']['pid'] = '151D'
+        manifest['device']['pid'] = '151C'
         with self.assertRaisesRegex(ValueError, 'PID 不一致'):
             manifest_profile(manifest)
         self.assertEqual(manifest_profile({'device': {'revision': '0067'}}), LG700_PROFILE)
@@ -192,14 +191,14 @@ class DeviceProfileTests(unittest.TestCase):
     def test_cross_model_mode_command_is_blocked_before_usb(self):
         (self.folder / 'manifest.json').write_text(json.dumps(self.manifest(LG600_PROFILE)))
         device = object.__new__(LG700)
-        device._profile, device.revision, device.info = LX800_PROFILE, 0x75, info(LX800_PROFILE)
+        device._profile, device.revision, device.info = LG700_PROFILE, 0x75, info(LG700_PROFILE)
         device.query = Mock()
         with self.assertRaisesRegex(ValueError, '跨型号'):
             device.set_offline_loop(False, self.folder)
         device.query.assert_not_called()
 
     def test_restore_checks_model_dimensions_and_hash(self):
-        for profile in (LG600_PROFILE, LX800_PROFILE):
+        for profile in (LG600_PROFILE,):
             data = media(profile)
             manifest = self.manifest(profile)
             manifest['assets']['boot'] = {'file': 'boot.bin', 'sha256': sha256(data)}
@@ -221,6 +220,28 @@ class DeviceProfileTests(unittest.TestCase):
                  patch.object(current_media, 'local_storage', return_value=state) as storage:
                 self.assertEqual(current_media.detect_current_media(profile)['path'], str(source))
                 self.assertEqual(storage.call_args.args[1], profile.key + '_lastPageState')
+
+    def test_removed_model_name_pid_and_backup_are_rejected(self):
+        self.assertEqual({p.key for p in PROFILES}, {'lg600', 'lg700'})
+        with self.assertRaises(ValueError):
+            resolve_profile('lx800')
+        with self.assertRaises(ValueError):
+            profile_for_info({'vendor_id': 0x1A2C, 'product_id': 0x151D})
+        for saved in ({'model': 'lx800', 'pid': '151D'}, {'pid': '151D'}):
+            with self.subTest(saved=saved), self.assertRaises(ValueError):
+                manifest_profile({'device': saved})
+
+    def test_removed_usb_device_is_ignored_before_any_transport_is_opened(self):
+        unsupported = dict(info(LG600_PROFILE), product_id=0x151D, product_string='LX800')
+        opened, hid = self.usb([unsupported])
+        with self.assertRaisesRegex(RuntimeError, '0 台'):
+            LG700()
+        opened.assert_not_called()
+        self.assertTrue(all(call.args[1] != 0x151D for call in hid.enumerate.call_args_list))
+        opened, _ = self.usb([unsupported, info(LG600_PROFILE)])
+        with LG700() as device:
+            self.assertEqual(device.profile, LG600_PROFILE)
+        opened.assert_called_once_with(info(LG600_PROFILE)['path'])
 
 
 if __name__ == '__main__':

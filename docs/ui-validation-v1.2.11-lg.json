@@ -1,8 +1,12 @@
 {
-  "version": "1.2.6",
+  "version": "1.2.11",
   "no_USB_access": true,
   "real_official_software_touched": false,
   "main_device_detection_mocked": true,
+  "supported_models": [
+    "lg700",
+    "lg600"
+  ],
   "startup_notice": {
     "read_first": true,
     "no_process_control_before_read": true,
@@ -17,7 +21,8 @@
       "preview_dimensions": [
         492,
         369
-      ]
+      ],
+      "empty_boot_first_write_message": true
     },
     {
       "model": "lg600",
@@ -26,16 +31,8 @@
       "preview_dimensions": [
         369,
         369
-      ]
-    },
-    {
-      "model": "lx800",
-      "shape": "circle",
-      "minimum_layout_fits": true,
-      "preview_dimensions": [
-        369,
-        369
-      ]
+      ],
+      "empty_boot_first_write_message": true
     }
   ],
   "responsive": {

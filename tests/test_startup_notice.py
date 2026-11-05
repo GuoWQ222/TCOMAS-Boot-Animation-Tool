@@ -3,14 +3,14 @@ import unittest
 from unittest.mock import Mock, patch
 
 import lg700_tool
-from device_profiles import LX800_PROFILE
+from device_profiles import LG600_PROFILE
 from startup_notice import StartupNotice
 
 
 class StartupNoticeTests(unittest.TestCase):
     def test_main_defers_app_and_hardware_until_read(self):
         root = Mock()
-        with patch.object(lg700_tool.sys, 'argv', ['tool', '--model', 'lx800']), \
+        with patch.object(lg700_tool.sys, 'argv', ['tool', '--model', 'lg600']), \
              patch.object(lg700_tool.tk, 'Tk', return_value=root), \
              patch.object(lg700_tool, 'StartupNotice') as page, \
              patch.object(lg700_tool, 'App') as app, \
@@ -28,7 +28,7 @@ class StartupNoticeTests(unittest.TestCase):
             self.assertEqual(page.call_args.kwargs['version'], lg700_tool.APP_VERSION)
             page.call_args.kwargs['on_read']()
             remember.assert_called_once()
-            app.assert_called_once_with(root, profile=LX800_PROFILE)
+            app.assert_called_once_with(root, profile=LG600_PROFILE, first_run=True)
 
     def test_closing_startup_window_does_not_construct_main_app(self):
         root = Mock()
@@ -63,6 +63,23 @@ class StartupNoticeTests(unittest.TestCase):
         page._entered = False
         page.root, page.frame, page.read_button, page.on_read = Mock(), Mock(), Mock(), Mock()
         return page
+
+    def test_firmware_upgrade_opens_official_page_only_when_requested(self):
+        root = Mock()
+        url = 'https://www.tcomas.cn/FirmwareUpgradeTest'
+        with patch.object(lg700_tool, 'confirm_warning', side_effect=[False, True, True]) as warn, \
+             patch.object(lg700_tool.webbrowser, 'open', side_effect=[True, False]) as browse, \
+             patch.object(lg700_tool.messagebox, 'showerror') as error:
+            lg700_tool.show_firmware_upgrade(root, 'LG700', 0x67)
+            browse.assert_not_called()
+            message = warn.call_args.kwargs['message']
+            self.assertIn('REV 0067', message)
+            self.assertIn('请选择 TCOMAS_LG700_V75，否则本软件可能不会正常工作。', message)
+            self.assertIn(url, message)
+            lg700_tool.show_firmware_upgrade(root, 'LG700', 0x67)
+            browse.assert_called_once_with(url)
+            lg700_tool.show_firmware_upgrade(root, 'LG700', 0x67)
+            self.assertIn(url, error.call_args.args[1])
 
     def test_acknowledgement_opens_main_once_even_if_called_again(self):
         page = self.page()

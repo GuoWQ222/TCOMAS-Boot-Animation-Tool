@@ -310,6 +310,8 @@ class RoundedCard(tk.Canvas):
 
     def resize(self, event):
         width, height = max(1, self.winfo_width()), max(1, self.winfo_height())
+        if width < 3 or height < 4:
+            return  # Tk has not allocated enough space for the card border yet.
         self.itemconfigure(self.window, width=max(1, width - self.padding * 2),
                            height=max(1, height - self.padding * 2))
         size = (width, height)

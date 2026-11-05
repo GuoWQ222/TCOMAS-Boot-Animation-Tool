@@ -41,6 +41,16 @@ def visible_inside(widget, root):
 
 results = {'version': lg700_tool.APP_VERSION, 'no_USB_access': True,
            'real_official_software_touched': False, 'main_device_detection_mocked': True}
+assert {profile.key for profile in PROFILES} == {'lg600', 'lg700'}
+
+
+def check_model_labels(widget):
+    if 'text' in widget.keys():
+        assert 'LX800' not in str(widget.cget('text'))
+    for child in widget.winfo_children():
+        check_model_labels(child)
+
+
 with tempfile.TemporaryDirectory() as temp:
     root = tk.Tk()
     root.withdraw()
@@ -61,6 +71,7 @@ with tempfile.TemporaryDirectory() as temp:
             root.deiconify()
             settle(root)
             detect.assert_not_called(); pause.assert_not_called(); hid.assert_not_called()
+            check_model_labels(root)
             for size in ('900x740', '960x780'):
                 root.geometry(size + '+0+0'); settle(root)
                 for label in page.body_labels:
@@ -70,6 +81,10 @@ with tempfile.TemporaryDirectory() as temp:
             capture(root, 'startup-notice.png')
             page.read_button.invoke(); settle(root)
             app = opened[0]
+            assert tuple(app.model_selector['values']) == ('自动识别', 'LG700', 'LG600')
+            assert 'LX800' not in root.title()
+            check_model_labels(root)
+            results['supported_models'] = [profile.key for profile in PROFILES]
             assert len(opened) == 1 and not page.frame.winfo_exists()
             assert not hasattr(app, 'stop_official') and not hasattr(app, 'vendor_control')
             assert not hasattr(app, 'write_current')

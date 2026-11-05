@@ -1,4 +1,4 @@
-"""Model-specific limits; LG600 / LX800 V75 have firmware emulation only."""
+"""Model-specific limits for the supported LG600 and LG700 displays."""
 from dataclasses import dataclass
 import hashlib
 
@@ -38,9 +38,7 @@ LG700_PROFILE = DeviceProfile('lg700', 'LG700', 0x151C, 640, 480,
                              frozenset({0x67, 0x75}), True)
 LG600_PROFILE = DeviceProfile('lg600', 'LG600', 0x1520, 480, 480,
                              frozenset({0x75}), False)
-LX800_PROFILE = DeviceProfile('lx800', 'LX800', 0x151D, 480, 480,
-                             frozenset({0x75}), False, visible_shape='circle')
-PROFILES = (LG700_PROFILE, LG600_PROFILE, LX800_PROFILE)
+PROFILES = (LG700_PROFILE, LG600_PROFILE)
 
 
 def resolve_profile(profile=None):
@@ -50,7 +48,7 @@ def resolve_profile(profile=None):
         if profile == known or (isinstance(profile, str) and
                                 profile.lower() in (known.key, known.name.lower())):
             return known
-    raise ValueError('不支持的屏幕型号；仅支持 LG700 / LG600 / LX800')
+    raise ValueError('不支持的屏幕型号；仅支持 LG700 / LG600')
 
 
 def profile_for_info(info):
@@ -108,11 +106,21 @@ def manifest_profile(manifest):
     return profile
 
 
+class BackupDeviceMismatch(ValueError):
+    """A backup declares a different device or firmware."""
+
+    def __init__(self, message, *, backup_revision=None):
+        super().__init__(message)
+        self.backup_revision = backup_revision
+
+
 def check_manifest_device(manifest, profile, *, revision=None, info=None):
+    saved_revision = manifest.get('device', {}).get('revision')
     if manifest_profile(manifest) != profile:
-        raise ValueError('备份型号与当前设备不匹配，禁止跨型号恢复')
-    if revision is not None and manifest['device'].get('revision') != f'{revision:04X}':
-        raise ValueError('备份固件版本不匹配')
+        raise BackupDeviceMismatch('备份型号与当前设备不匹配，禁止跨型号恢复',
+                                   backup_revision=saved_revision)
+    if revision is not None and saved_revision != f'{revision:04X}':
+        raise BackupDeviceMismatch('备份固件版本不匹配', backup_revision=saved_revision)
     key = manifest.get('device', {}).get('device_key')
     if key and info is not None and key != backup_device_key(info, profile):
-        raise ValueError('备份不属于当前设备，已停止')
+        raise BackupDeviceMismatch('备份不属于当前设备，已停止', backup_revision=saved_revision)
