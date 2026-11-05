@@ -1,4 +1,4 @@
-<h1 align="center">钛钽关机动画工具 · LG600 / LG700</h1>
+<h1 align="center">钛钽水冷屏幕关机动画工具 · LG600 / LG700</h1>
 
 <p align="center">
   <img src="docs/assets/tagline-art.svg" alt="把喜欢的图片与视频，留在你的水冷屏幕里。" width="920"><br>
