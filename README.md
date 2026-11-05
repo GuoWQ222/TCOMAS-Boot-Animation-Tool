@@ -1,9 +1,7 @@
 <h1 align="center">钛钽关机动画工具 · LG600 / LG700</h1>
 
-当前版本仅支持 **LG600、LG700**。
-
 <p align="center">
-  把喜欢的图片与视频，留在你的水冷屏幕里。<br>
+  <img src="docs/assets/tagline-art.svg" alt="把喜欢的图片与视频，留在你的水冷屏幕里。" width="920"><br>
   <strong>写入屏幕内置存储 · 关机动画</strong><br>
   <img src="docs/assets/standalone-operation.svg" alt="独立运行，不需要安装钛钽水冷驱动软件" width="384" height="36">
 </p>
@@ -30,16 +28,6 @@
 <p align="center">
   <img src="docs/assets/feature-cards-equal.svg" alt="图片常驻：上传一张图片，让喜欢的画面一直显示；视频循环：将视频保存到屏幕，关机时也能循环播放；解压即用：便携包解压即可运行，内置 Python 与 FFmpeg。" width="100%">
 </p>
-
-## 这款软件是否适合您？
-
-### 1. 您希望在关机时屏幕不亮（黑屏），在开机后屏幕亮
-
-这款软件不适合您，请您安装官方软件，打开“休眠模式”并开启自启动即可。
-
-### 2. 您希望在关机时、以及开机进入系统前仍然播放自定义动画
-
-这款软件非常适合您！
 
 ## 💬 问题反馈 · Issues
 
